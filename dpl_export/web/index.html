@@ -1,0 +1,388 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>DPL Exportassistent</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body>
+    <a class="skip-link" href="#datapoint-workspace">Direkt zu den Datensätzen</a>
+
+    <header class="topbar">
+      <a class="brand" href="#top" aria-label="DPL Exportassistent – Startseite">
+        <span class="brand-mark" aria-hidden="true">DA</span>
+        <span>
+          <strong>DPL Exportassistent</strong>
+          <small>Daten prüfen und sicher exportieren</small>
+        </span>
+      </a>
+      <div class="topbar-actions">
+        <div class="header-status" id="header-status" aria-live="polite">
+          <span class="status-dot"></span>
+          <span>Projekt wird geladen …</span>
+        </div>
+        <span class="intranet-badge">Nur Intranet / VPN</span>
+      </div>
+    </header>
+
+    <main id="top">
+      <section class="upload-section" aria-labelledby="upload-title">
+        <div class="upload-copy">
+          <p class="eyebrow">Neue Datenpunktliste</p>
+          <h1 id="upload-title">DPL hochladen und automatisch aufbereiten</h1>
+          <p>Wählen Sie eine DPL im XLSX-Format. Das Programm übernimmt ausschließlich gelb oder orange markierte Datensätze und prüft sie vor dem Austausch.</p>
+          <ul class="upload-rules">
+            <li>Erwartetes Tabellenblatt: <strong>PWK_Analogwerte</strong></li>
+            <li>Maximale Dateigröße: <strong>25 MB</strong></li>
+            <li>Die Übernahme erfolgt <strong>vollständig oder gar nicht</strong></li>
+          </ul>
+        </div>
+        <div class="upload-control">
+          <input class="sr-only" id="dpl-upload-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+          <label class="drop-zone" id="dpl-drop-zone" for="dpl-upload-input" tabindex="0">
+            <span class="upload-file-icon" aria-hidden="true">XLSX</span>
+            <strong>DPL-Datei auswählen</strong>
+            <span>Datei hier ablegen oder anklicken</span>
+          </label>
+          <div class="upload-selection" id="upload-selection" hidden>
+            <div>
+              <strong id="upload-filename">–</strong>
+              <span id="upload-filesize">–</span>
+            </div>
+            <button class="button button-primary" id="upload-start" type="button">DPL prüfen und übernehmen</button>
+          </div>
+          <div class="upload-progress" id="upload-progress" hidden role="status" aria-live="polite">
+            <span class="spinner" aria-hidden="true"></span>
+            <div><strong>DPL wird geprüft und eingelesen …</strong><span>Der aktuelle Stand bleibt erhalten, bis alle Prüfungen abgeschlossen sind.</span></div>
+          </div>
+          <div class="upload-result" id="upload-result" hidden role="status" aria-live="polite"></div>
+        </div>
+      </section>
+
+      <section class="project-intro" aria-labelledby="project-name">
+        <div>
+          <p class="eyebrow">Aktives Projekt</p>
+          <h2 id="project-name">Projekt wird geladen …</h2>
+          <p id="project-meta" class="muted">Die Projektdaten werden vorbereitet.</p>
+        </div>
+        <a class="quiet-link" href="#quick-help">Wie funktioniert das?</a>
+      </section>
+
+      <section class="workflow" id="quick-help" aria-labelledby="workflow-title">
+        <div class="workflow-heading">
+          <div>
+            <p class="eyebrow">Schnellstart</p>
+            <h2 id="workflow-title">In drei Schritten zum fertigen Export</h2>
+          </div>
+          <p>Gelb und orange markierte DPL-Zeilen sind bereits übernommen. Sie müssen nur offene Punkte prüfen.</p>
+        </div>
+
+        <ol class="workflow-steps">
+          <li class="workflow-step is-complete" id="step-import">
+            <span class="step-number" aria-hidden="true">1</span>
+            <div>
+              <strong>DPL ist eingelesen</strong>
+              <span id="guide-source-state">Markierte Datensätze werden geladen …</span>
+            </div>
+            <span class="step-state">Erledigt</span>
+          </li>
+          <li class="workflow-step" id="step-review">
+            <span class="step-number" aria-hidden="true">2</span>
+            <div>
+              <strong>Offene Punkte prüfen</strong>
+              <span id="guide-review-state">Prüfstatus wird ermittelt …</span>
+            </div>
+            <button class="text-button" id="show-open-issues" type="button">Jetzt prüfen</button>
+          </li>
+          <li class="workflow-step" id="step-export">
+            <span class="step-number" aria-hidden="true">3</span>
+            <div>
+              <strong>Dateien herunterladen</strong>
+              <span id="guide-export-state">Nach der Prüfung stehen beide CSV-Dateien bereit.</span>
+            </div>
+            <a class="text-button" href="#exports">Zum Export</a>
+          </li>
+        </ol>
+      </section>
+
+      <section class="review-banner" id="review-banner" aria-live="polite">
+        <div class="review-icon" aria-hidden="true">!</div>
+        <div>
+          <strong id="review-title">Daten werden geprüft …</strong>
+          <p id="review-copy">Einen Augenblick bitte.</p>
+        </div>
+        <button class="button button-secondary" id="review-action" type="button">Offene Punkte anzeigen</button>
+      </section>
+
+      <section class="workspace" id="datapoint-workspace" aria-labelledby="workspace-title">
+        <div class="workspace-head">
+          <div>
+            <p class="eyebrow">Schritt 2</p>
+            <h2 id="workspace-title">Datensätze prüfen</h2>
+            <p class="section-copy">Datensätze mit Handlungsbedarf stehen automatisch oben. Öffnen Sie einen Eintrag mit „Prüfen“.</p>
+          </div>
+          <div class="summary-chips" aria-label="Datensatzübersicht">
+            <span><strong id="stat-total">–</strong> markiert</span>
+            <span><strong id="stat-acron">–</strong> für Acron</span>
+            <span><strong id="stat-provider">–</strong> für Provider</span>
+            <span class="session-edited-chip" id="session-edited-chip" title="Nur in dieser Browser-Sitzung"><strong id="stat-session-edited">0</strong> kürzlich bearbeitet</span>
+          </div>
+        </div>
+
+        <div class="filter-panel" aria-label="Datensätze filtern">
+          <label class="search-field">
+            <span>Datensatz suchen</span>
+            <input id="search" type="search" placeholder="Name, Nummer oder PCS7-Quelle …" autocomplete="off">
+          </label>
+          <label>
+            <span>Prüfstatus</span>
+            <select id="status-filter">
+              <option value="">Alle Status</option>
+              <option value="attention">Nur Handlungsbedarf</option>
+              <option value="error">Nur Fehler</option>
+              <option value="warning">Nur Hinweise</option>
+              <option value="ready">Nur bereit</option>
+            </select>
+          </label>
+          <label>
+            <span>Wertetyp</span>
+            <select id="type-filter">
+              <option value="">Alle Wertetypen</option>
+            </select>
+          </label>
+          <label>
+            <span>DPL-Markierung</span>
+            <select id="marker-filter">
+              <option value="">Gelb und Orange</option>
+              <option value="yellow">Nur Gelb</option>
+              <option value="orange">Nur Orange</option>
+            </select>
+          </label>
+          <button class="filter-reset" id="reset-filters" type="button">Filter zurücksetzen</button>
+        </div>
+
+        <div class="result-bar">
+          <span id="result-count">Datensätze werden geladen …</span>
+          <span class="result-hint">Offene Punkte zuerst</span>
+        </div>
+
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th scope="col">Prüfstatus</th>
+                <th scope="col">DPL-Datensatz</th>
+                <th scope="col">Wertetyp</th>
+                <th scope="col">Exportziel</th>
+                <th scope="col">Aktiv</th>
+                <th scope="col"><span class="sr-only">Aktion</span></th>
+              </tr>
+            </thead>
+            <tbody id="datapoint-rows">
+              <tr><td colspan="6" class="empty-state">Datensätze werden geladen …</td></tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="workspace-foot">
+          <span>Türkis markierte Zeilen wurden in dieser Browser-Sitzung bearbeitet.</span>
+          <span><i class="marker yellow"></i> Gelb <i class="marker orange"></i> Orange</span>
+        </div>
+      </section>
+
+      <section class="activity-section" aria-labelledby="activity-title">
+        <div class="activity-heading">
+          <div>
+            <p class="eyebrow">Nachvollziehbarkeit</p>
+            <h2 id="activity-title">Letzte Änderungen</h2>
+          </div>
+          <p>Welche Werte wurden zuletzt geändert?</p>
+        </div>
+        <ol class="activity-list" id="activity-list">
+          <li>Änderungsprotokoll wird geladen …</li>
+        </ol>
+      </section>
+
+      <section class="exports-section" id="exports" aria-labelledby="exports-title">
+        <div class="exports-heading">
+          <div>
+            <p class="eyebrow">Schritt 3</p>
+            <h2 id="exports-title">Exportdateien herunterladen</h2>
+          </div>
+          <div class="export-readiness" id="export-readiness">Prüfstatus wird geladen …</div>
+        </div>
+
+        <div class="export-grid">
+          <article class="export-card">
+            <div class="file-badge" aria-hidden="true">CSV</div>
+            <div>
+              <p class="eyebrow">Acron-Import</p>
+              <h3 id="acron-filename">braukgraben_neu.csv</h3>
+              <p><strong id="export-acron-count">–</strong> aktive Datensätze, einschließlich Hand- und Rechenwerte.</p>
+            </div>
+            <a class="button button-primary export-link" data-export-kind="acron" href="/api/exports/acron" download>Acron CSV herunterladen</a>
+          </article>
+          <article class="export-card">
+            <div class="file-badge provider" aria-hidden="true">CSV</div>
+            <div>
+              <p class="eyebrow">WinCC-Provider</p>
+              <h3 id="provider-filename">shhamm_provider1_WINCC60.csv</h3>
+              <p><strong id="export-provider-count">–</strong> Onlinewerte mit PCS7-Prozessdatenverknüpfung.</p>
+            </div>
+            <a class="button button-dark export-link" data-export-kind="provider" href="/api/exports/provider" download>Provider CSV herunterladen</a>
+          </article>
+        </div>
+        <p class="export-note">Die Dateien werden beim Herunterladen aus dem aktuell gespeicherten Stand erzeugt.</p>
+      </section>
+    </main>
+
+    <dialog id="editor-dialog" aria-labelledby="editor-title">
+      <form id="editor-form">
+        <div class="dialog-head">
+          <div>
+            <p class="eyebrow">Datensatz prüfen und bearbeiten</p>
+            <h2 id="editor-title">–</h2>
+            <p id="editor-subtitle">–</p>
+          </div>
+          <button class="icon-button" type="button" id="close-editor" aria-label="Editor schließen">×</button>
+        </div>
+
+        <div class="dialog-body">
+          <div id="editor-issues" class="issue-panel" role="status"></div>
+
+          <section class="source-summary" aria-labelledby="source-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Original aus der DPL</p>
+                <h3 id="source-title">Quelldaten zum Vergleich</h3>
+              </div>
+              <span id="editor-status" class="status">–</span>
+            </div>
+            <dl class="source-grid">
+              <div><dt>Langname</dt><dd id="source-long">–</dd></div>
+              <div><dt>Kurzname</dt><dd id="source-short">–</dd></div>
+              <div class="wide"><dt>PCS7-Prozessdatenverknüpfung</dt><dd id="source-pcs7" class="mono-value">–</dd></div>
+              <div><dt>Einheit / Nachkommastellen</dt><dd id="source-unit">–</dd></div>
+              <div><dt>Fundstelle</dt><dd id="source-position">–</dd></div>
+            </dl>
+          </section>
+
+          <section class="form-section required-section" aria-labelledby="required-title">
+            <div class="section-heading">
+              <div>
+                <p class="eyebrow">Wichtig</p>
+                <h3 id="required-title">Acron-Exportdaten</h3>
+                <p>Prüfen Sie besonders hervorgehobene Felder. Ein Stern kennzeichnet Pflichtangaben.</p>
+              </div>
+            </div>
+            <div class="form-grid">
+              <label class="wide">Acron-Identifikation <span class="required-mark">*</span>
+                <span class="field-help">Eindeutiger technischer Name des Datensatzes</span>
+                <input id="acron-identification" required>
+              </label>
+              <label class="wide">Anzeigename in Acron <span class="required-mark">*</span>
+                <input id="acron-name" required>
+              </label>
+              <label class="wide">Acron-Gruppe <span class="required-mark">*</span>
+                <input id="acron-group" required>
+              </label>
+              <label class="wide">Formel oder Prozessdatenverknüpfung
+                <span class="field-help">Bei Onlinewerten die PCS7-Quelle, bei Rechenwerten die Acron-Formel</span>
+                <input id="acron-formula">
+              </label>
+              <div class="field-group wide" role="group" aria-labelledby="range-label">
+                <span id="range-label" class="group-label">Messbereich</span>
+                <div class="range-grid">
+                  <label>Von<input id="acron-pval-from" inputmode="decimal"></label>
+                  <span aria-hidden="true">bis</span>
+                  <label>Bis<input id="acron-pval-to" inputmode="decimal"></label>
+                  <label>Einheit<input id="acron-unit"></label>
+                  <label>Nachkommastellen<input id="acron-decimals" type="number" min="0" max="9"></label>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <details class="advanced-panel" id="acron-advanced">
+            <summary>
+              <span><strong>Weitere Acron-Einstellungen</strong><small>Typ, Zyklus und Verdichtung</small></span>
+              <span class="summary-action">Öffnen</span>
+            </summary>
+            <div class="panel-content form-grid">
+              <label>Wertetyp
+                <select id="acron-type">
+                  <option value="0">Onlinewert</option>
+                  <option value="1">Handwert</option>
+                  <option value="2">Rechenwert</option>
+                  <option value="3">Kennzahl</option>
+                </select>
+              </label>
+              <label>Ausgabeformat
+                <select id="acron-format-out">
+                  <option value="0">Numerisch</option>
+                  <option value="1">Zeit</option>
+                  <option value="2">Text</option>
+                </select>
+              </label>
+              <label>Wertebehandlung
+                <select id="acron-pval-handling">
+                  <option value="0">Keine</option>
+                  <option value="1">Differenz zum Vorwert</option>
+                  <option value="2">Zählerdiff. variabler Überlauf</option>
+                  <option value="3">Zählerdiff. fester Überlauf</option>
+                  <option value="5">Betriebsstunden aus Bit</option>
+                  <option value="6">Integral</option>
+                </select>
+              </label>
+              <label>Archivzyklus in Sekunden<input id="acron-cycle" type="number" min="0"></label>
+              <label>Intervallverdichtung<select id="acron-interval-mode" class="aggregation-select"></select></label>
+              <label>Tagesverdichtung<select id="acron-daily-mode" class="aggregation-select"></select></label>
+              <label>Monatsverdichtung<select id="acron-monthly-mode" class="aggregation-select"></select></label>
+              <label>Jahresverdichtung<select id="acron-yearly-mode" class="aggregation-select"></select></label>
+              <label class="wide">Acron-Kommentar<textarea id="acron-comment" rows="2"></textarea></label>
+            </div>
+          </details>
+
+          <details class="advanced-panel" id="provider-panel">
+            <summary>
+              <span><strong>Provider-Export</strong><small>Nur für Onlinewerte mit PCS7-Quelle</small></span>
+              <span class="summary-status" id="provider-summary-status">–</span>
+            </summary>
+            <div class="panel-content">
+              <label class="switch-row">
+                <span><strong>In Provider-CSV aufnehmen</strong><small>Deaktivieren, wenn dieser Datensatz nur nach Acron gehört.</small></span>
+                <input id="provider-include" type="checkbox" role="switch">
+              </label>
+              <fieldset id="provider-fields" class="form-grid">
+                <label class="wide">Provider-Variablenname<span class="field-help">PCS7-Prozessdatenverknüpfung</span><input id="provider-var-name"></label>
+                <label class="wide">Beschreibung<input id="provider-description"></label>
+                <label class="wide">Provider-Gruppe<input id="provider-group"></label>
+                <label>Datentyp (DBPType)<input id="provider-dbp-type" type="number" min="0"></label>
+                <label>Zyklus in Sekunden<input id="provider-cycle" type="number" min="0"></label>
+                <label class="checkbox-row"><input id="provider-delta-active" type="checkbox"> Delta Event 1 aktiv</label>
+                <label>Delta-Änderung<input id="provider-delta-change" inputmode="decimal"></label>
+                <label class="wide">Provider-Kommentar<textarea id="provider-comment" rows="2"></textarea></label>
+              </fieldset>
+            </div>
+          </details>
+        </div>
+
+        <div class="dialog-foot">
+          <label class="switch-row compact">
+            <span><strong>Im Acron-Export aktiv</strong><small>Deaktivierte Datensätze werden nicht exportiert.</small></span>
+            <input id="datapoint-enabled" type="checkbox" role="switch">
+          </label>
+          <div class="dialog-actions">
+            <span id="unsaved-state" class="unsaved-state" aria-live="polite"></span>
+            <button type="button" class="button button-secondary" id="cancel-editor">Abbrechen</button>
+            <button type="submit" class="button button-primary" id="save-editor">Speichern und prüfen</button>
+          </div>
+        </div>
+      </form>
+    </dialog>
+
+    <div id="toast" role="status" aria-live="polite"></div>
+    <script src="/app.js" defer></script>
+  </body>
+</html>

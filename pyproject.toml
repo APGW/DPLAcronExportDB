@@ -1,0 +1,8 @@
+[project]
+name = "dpl-acron-export"
+version = "2.0.0"
+description = "Mehrbenutzer-Webservice mit MariaDB zur Überführung einer DPL in Acron- und WINCC60-Provider-Exporte"
+requires-python = ">=3.11"
+
+[tool.unittest]
+start-directory = "tests"

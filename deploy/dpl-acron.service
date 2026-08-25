@@ -1,0 +1,44 @@
+[Unit]
+Description=DPL Acron Exportassistent
+After=network.target mariadb.service
+Wants=mariadb.service
+
+[Service]
+Type=simple
+User=dpl-acron
+Group=dpl-acron
+WorkingDirectory=/opt/dpl-acron
+EnvironmentFile=-/etc/default/dpl-acron
+EnvironmentFile=/etc/dpl-acron/database.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+ExecStart=/usr/bin/python3 /opt/dpl-acron/app.py --data-dir /var/lib/dpl-acron/data serve --host ${DPL_HOST} --port ${DPL_PORT}
+Restart=on-failure
+RestartSec=3s
+TimeoutStopSec=20s
+UMask=0027
+
+NoNewPrivileges=true
+PrivateDevices=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectKernelLogs=true
+ProtectControlGroups=true
+ProtectClock=true
+ProtectHostname=true
+RestrictSUIDSGID=true
+RestrictRealtime=true
+RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
+LockPersonality=true
+MemoryDenyWriteExecute=true
+CapabilityBoundingSet=
+AmbientCapabilities=
+ReadWritePaths=/var/lib/dpl-acron
+StateDirectory=dpl-acron
+StateDirectoryMode=0750
+
+[Install]
+WantedBy=multi-user.target
