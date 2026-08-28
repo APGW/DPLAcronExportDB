@@ -159,6 +159,7 @@ Wichtige Pfade:
 
 - Programm: `/opt/dpl-acron`
 - Uploads: `/var/lib/dpl-acron/data/imports`
+- optionale PCS7-Exporte: `/var/lib/dpl-acron/data/pcs7`
 - Datenbankzugang: `/etc/dpl-acron/database.env`
 - MariaDB-Dump-Konfiguration: `/etc/dpl-acron/mariadb-client.cnf`
 - Sicherungen: `/var/backups/dpl-acron`

@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS datapoints (
     source_row INT UNSIGNED NOT NULL,
     source_number VARCHAR(255),
     marker_color ENUM('yellow', 'orange') NOT NULL,
+    has_orange_changes TINYINT(1) NOT NULL DEFAULT 0,
     folder_level1 VARCHAR(500),
     folder_level2 VARCHAR(500),
     class_name VARCHAR(255),
@@ -52,6 +53,8 @@ CREATE TABLE IF NOT EXISTS datapoints (
     source_acron_long TEXT,
     source_acron_short VARCHAR(500),
     enabled TINYINT(1) NOT NULL DEFAULT 1,
+    pcs7_reviewed TINYINT(1) NOT NULL DEFAULT 0,
+    pcs7_reviewed_at TIMESTAMP NULL,
     row_version BIGINT UNSIGNED NOT NULL DEFAULT 1,
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -61,7 +64,9 @@ CREATE TABLE IF NOT EXISTS datapoints (
     KEY idx_datapoints_type (project_id, source_value_type),
     CONSTRAINT fk_datapoint_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     CONSTRAINT fk_datapoint_import FOREIGN KEY (import_id) REFERENCES imports(id) ON DELETE CASCADE,
-    CONSTRAINT chk_datapoint_enabled CHECK (enabled IN (0, 1))
+    CONSTRAINT chk_datapoint_enabled CHECK (enabled IN (0, 1)),
+    CONSTRAINT chk_datapoint_pcs7_reviewed CHECK (pcs7_reviewed IN (0, 1)),
+    CONSTRAINT chk_datapoint_orange_changes CHECK (has_orange_changes IN (0, 1))
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS acron_configs (
@@ -138,4 +143,33 @@ CREATE TABLE IF NOT EXISTS audit_log (
     changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_audit_changed_at (changed_at),
     CONSTRAINT fk_audit_datapoint FOREIGN KEY (datapoint_id) REFERENCES datapoints(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pcs7_imports (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    project_id BIGINT UNSIGNED NOT NULL,
+    kind ENUM('parameter', 'signals', 'alarms') NOT NULL,
+    source_filename VARCHAR(255) NOT NULL,
+    source_sha256 CHAR(64) NOT NULL,
+    reference_count INT UNSIGNED NOT NULL,
+    imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_pcs7_import_kind (project_id, kind),
+    CONSTRAINT fk_pcs7_import_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS pcs7_references (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    import_id BIGINT UNSIGNED NOT NULL,
+    endpoint_key VARCHAR(1000) NOT NULL,
+    plan_name VARCHAR(255) NOT NULL,
+    block_name VARCHAR(255) NOT NULL,
+    connection_name VARCHAR(500) NOT NULL,
+    data_type VARCHAR(100),
+    unit VARCHAR(255),
+    comment TEXT,
+    source_sheet VARCHAR(255) NOT NULL,
+    source_row INT UNSIGNED NOT NULL,
+    UNIQUE KEY uq_pcs7_reference_source (import_id, source_sheet, source_row),
+    KEY idx_pcs7_reference_key (endpoint_key(255)),
+    CONSTRAINT fk_pcs7_reference_import FOREIGN KEY (import_id) REFERENCES pcs7_imports(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

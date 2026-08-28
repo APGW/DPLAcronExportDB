@@ -25,6 +25,7 @@ const state = {
   current: null,
   initialPayload: null,
   uploadFile: null,
+  pcs7Files: [],
   searchTimer: null,
   saving: false,
   editedIds: loadSessionEditedIds(),
@@ -142,8 +143,9 @@ function renderSummary(summary) {
   text("#export-provider-count", counts.provider);
   text("#acron-filename", project.acron_filename);
   text("#provider-filename", project.provider_filename);
-  text("#guide-source-state", `${counts.total} Datensätze: ${counts.yellow || 0} gelb, ${counts.orange || 0} orange markiert.`);
+  text("#guide-source-state", `${counts.total} Datensätze: ${counts.yellow || 0} gelb ausgewählt, ${counts.orange_changes || 0} mit orange geänderten Zellen.`);
   syncSessionEditedDataset(summary);
+  renderPCS7Summary(summary.pcs7 || { active: false, imports: [], checked: 0, confirmed: 0, mismatches: 0 });
 
   header.className = "header-status";
   banner.className = "review-banner";
@@ -216,6 +218,7 @@ const auditFieldLabels = {
   comment: "Kommentar",
   include: "Provider-Exportstatus",
   varName: "Provider-Variablenname",
+  pcs7Reviewed: "Manuelle PCS7-Prüfung",
   import: "DPL-Import",
 };
 
@@ -267,6 +270,8 @@ function filteredAndSorted(items) {
     if (!selectedStatus) return true;
     if (selectedStatus === "attention") return ["error", "warning"].includes(item.issue_level);
     if (selectedStatus === "ready") return ["ok", "info"].includes(item.issue_level);
+    if (selectedStatus === "pcs7") return item.pcs7?.status === "mismatch";
+    if (selectedStatus === "pcs7_reviewed") return item.pcs7?.status === "reviewed";
     return item.issue_level === selectedStatus;
   });
   const priority = { error: 0, warning: 1, info: 2, ok: 3 };
@@ -287,12 +292,17 @@ function renderRows(items) {
       const provider = Boolean(item.provider_include_export);
       const recentlyEdited = state.editedIds.has(Number(item.id));
       const issueCount = (item.issues || []).filter((issue) => issue.level === item.issue_level).length;
-      const markerName = item.marker_color === "yellow" ? "Gelb" : "Orange";
-      const rowClasses = [item.enabled ? "" : "disabled", recentlyEdited ? "recently-edited" : ""].filter(Boolean).join(" ");
+      const markerName = item.marker_color === "yellow" ? "Gelb ausgewählt" : "Orange markiert";
+      const orangeChanged = Boolean(item.has_orange_changes);
+      const pcs7Mismatch = item.pcs7?.status === "mismatch";
+      const pcs7Reviewed = item.pcs7?.status === "reviewed";
+      const rowClasses = [item.enabled ? "" : "disabled", recentlyEdited ? "recently-edited" : "", orangeChanged ? "orange-changed" : "", pcs7Mismatch ? "pcs7-mismatch" : "", pcs7Reviewed ? "pcs7-reviewed" : ""].filter(Boolean).join(" ");
       return `
         <tr data-id="${item.id}" data-revision="${item.revision}" class="${rowClasses}">
           <td data-label="Prüfstatus">
             ${statusLabel(item.issue_level, issueCount)}
+            ${pcs7Mismatch ? '<span class="pcs7-mismatch-badge">PCS7-Abweichung</span>' : ""}
+            ${pcs7Reviewed ? '<span class="pcs7-reviewed-badge">PCS7 manuell geprüft</span>' : ""}
             ${recentlyEdited ? '<span class="session-edited-badge">Kürzlich bearbeitet</span>' : ""}
           </td>
           <td data-label="DPL-Datensatz">
@@ -300,7 +310,7 @@ function renderRows(items) {
             <span class="cell-subtitle">${escapeHtml(item.folder_level1 || "Ohne Ordner")} · <span class="cell-id">${escapeHtml(item.acron_identification)}</span></span>
           </td>
           <td data-label="Wertetyp">
-            <div class="type-cell"><i class="marker ${escapeHtml(item.marker_color)}" title="${markerName} markiert"></i><span class="tag">${escapeHtml(item.source_value_type)}</span></div>
+            <div class="type-cell"><i class="marker ${escapeHtml(item.marker_color)}" title="${markerName}"></i><span class="tag">${escapeHtml(item.source_value_type)}</span>${orangeChanged ? '<span class="orange-change-badge">Orange Zelle geändert</span>' : ""}</div>
           </td>
           <td data-label="Exportziel">
             <span class="destination"><strong>${provider ? "Acron + Provider" : "Nur Acron"}</strong>${escapeHtml(item.source_pcs7_variable || "Acron-interner Wert")}</span>
@@ -308,7 +318,12 @@ function renderRows(items) {
           <td data-label="Aktiv">
             <label class="row-toggle"><input class="row-enabled" type="checkbox" ${item.enabled ? "checked" : ""} aria-label="${escapeHtml(item.source_long_name)} im Acron-Export aktiv"> Ja</label>
           </td>
-          <td data-label="Aktion"><button class="row-button" type="button">${["error", "warning"].includes(item.issue_level) ? "Prüfen" : "Bearbeiten"}</button></td>
+          <td data-label="Aktion">
+            <div class="row-actions">
+              ${(pcs7Mismatch || pcs7Reviewed) ? `<button class="row-review-button${pcs7Reviewed ? " is-reviewed" : ""}" type="button">${pcs7Reviewed ? "Prüfung zurücknehmen" : "Als geprüft"}</button>` : ""}
+              <button class="row-button" type="button">${["error", "warning"].includes(item.issue_level) ? "Details prüfen" : "Bearbeiten"}</button>
+            </div>
+          </td>
         </tr>`;
     }).join("");
   }
@@ -318,6 +333,28 @@ function renderRows(items) {
 
   body.querySelectorAll("tr[data-id]").forEach((row) => {
     row.querySelector(".row-button").addEventListener("click", () => openEditor(Number(row.dataset.id)));
+    const reviewButton = row.querySelector(".row-review-button");
+    if (reviewButton) {
+      reviewButton.addEventListener("click", async () => {
+        const item = state.rawItems.find((candidate) => Number(candidate.id) === Number(row.dataset.id));
+        if (!item) return;
+        const reviewed = item.pcs7?.status === "reviewed";
+        reviewButton.disabled = true;
+        try {
+          const updated = await fetchJson(`/api/datapoints/${row.dataset.id}`, {
+            method: "PATCH",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ revision: Number(row.dataset.revision), pcs7Reviewed: !reviewed }),
+          });
+          markSessionEdited(updated.id);
+          await reload();
+          showToast(reviewed ? "Manuelle PCS7-Prüfung zurückgenommen." : "Datensatz als manuell geprüft markiert.");
+        } catch (error) {
+          showToast(error.status === 409 ? "Der Datensatz wurde zwischenzeitlich geändert. Die Liste wurde aktualisiert." : error.message, true);
+          await reload().catch(() => {});
+        }
+      });
+    }
     row.querySelector(".row-enabled").addEventListener("change", async (event) => {
       try {
         event.target.disabled = true;
@@ -385,7 +422,30 @@ const issueFields = {
   provider_group_missing: "#provider-group",
   range_invalid: ".field-group",
   range_order: ".field-group",
+  pcs7_acron_reference_mismatch: "#acron-formula",
+  pcs7_provider_reference_mismatch: "#provider-var-name",
 };
+
+function renderPCS7Summary(pcs7) {
+  const imports = pcs7.imports || [];
+  const list = $("#pcs7-imports");
+  list.innerHTML = imports.length
+    ? imports.map((item) => `<div class="pcs7-import-card"><span>${escapeHtml(item.kind_label)}</span><strong>${escapeHtml(item.source_filename)}</strong><small>${item.reference_count} Referenzen</small></div>`).join("")
+    : '<p class="pcs7-empty">Keine PCS7-Dateien hinterlegt. Die DPL kann weiterhin ohne diese optionale Prüfung exportiert werden.</p>';
+  if (pcs7.active) {
+    text("#pcs7-summary-text", `${pcs7.confirmed} automatisch bestätigt · ${pcs7.reviewed || 0} manuell geprüft · ${pcs7.mismatches} offen`);
+    text("#pcs7-summary-state", pcs7.mismatches ? `${pcs7.mismatches} Abweichungen` : "Prüfung aktiv");
+    $("#pcs7-summary-state").className = pcs7.mismatches ? "pcs7-summary-state has-error" : "pcs7-summary-state is-ready";
+  } else if (imports.length) {
+    text("#pcs7-summary-text", "Zusatzexporte erkannt. Für die vollständige Negativprüfung fehlt noch der Parameterexport.");
+    text("#pcs7-summary-state", "Parameter fehlt");
+    $("#pcs7-summary-state").className = "pcs7-summary-state has-warning";
+  } else {
+    text("#pcs7-summary-text", "Noch keine PCS7-Exporte hochgeladen.");
+    text("#pcs7-summary-state", "Optional");
+    $("#pcs7-summary-state").className = "pcs7-summary-state";
+  }
+}
 
 function renderEditorIssues(issues) {
   const panel = $("#editor-issues");
@@ -437,7 +497,7 @@ function populateEditor(item) {
   state.current = item;
   state.initialPayload = null;
   text("#editor-title", item.source_long_name);
-  text("#editor-subtitle", `DPL-Nr. ${item.source_number} · ${item.marker_color === "yellow" ? "gelb" : "orange"} markiert · ${item.source_value_type}`);
+  text("#editor-subtitle", `DPL-Nr. ${item.source_number} · ${item.marker_color === "yellow" ? "gelb ausgewählt" : "orange markiert"}${item.has_orange_changes ? " · orange Zelle geändert" : ""} · ${item.source_value_type}`);
   text("#source-long", item.source_long_name);
   text("#source-short", item.source_vg_short);
   text("#source-pcs7", item.source_pcs7_variable || "Acron-interner Wert");
@@ -477,6 +537,7 @@ function populateEditor(item) {
   $("#provider-panel").open = (item.issues || []).some((issue) => issue.code.startsWith("provider_"));
   updateProviderState();
   renderEditorIssues(item.issues || []);
+  renderPCS7Review(item);
 
   const editorStatus = $("#editor-status");
   const level = (item.issues || []).some((issue) => issue.level === "error") ? "error"
@@ -553,6 +614,45 @@ function updateDirtyState() {
   const dirty = isEditorDirty();
   text("#unsaved-state", dirty ? "Ungespeicherte Änderungen" : "");
   $("#save-editor").disabled = !dirty || state.saving;
+  if (!$("#pcs7-review-control").hidden) $("#pcs7-review-button").disabled = dirty || state.saving;
+}
+
+function renderPCS7Review(item) {
+  const panel = $("#pcs7-review-control");
+  const status = item.pcs7?.status;
+  panel.hidden = !["mismatch", "reviewed"].includes(status);
+  if (panel.hidden) return;
+  const reviewed = status === "reviewed";
+  text("#pcs7-review-title", reviewed ? "PCS7-Abweichung wurde manuell geprüft" : "PCS7-Abweichung manuell bewerten");
+  const messages = item.pcs7?.messages || (item.issues || [])
+    .filter((issue) => issue.code.startsWith("pcs7_"))
+    .map((issue) => issue.message.replace(/ Manuell geprüft\.$/, ""));
+  text("#pcs7-review-detail", messages.join(" ") || "Die Referenz weicht vom PCS7-Export ab.");
+  $("#pcs7-review-button").textContent = reviewed ? "Prüfung zurücknehmen" : "Als geprüft markieren";
+  $("#pcs7-review-button").className = reviewed ? "button button-secondary is-reviewed" : "button button-secondary";
+}
+
+async function togglePCS7Review() {
+  if (!state.current || isEditorDirty()) return;
+  const reviewed = state.current.pcs7?.status === "reviewed";
+  const button = $("#pcs7-review-button");
+  button.disabled = true;
+  try {
+    const updated = await fetchJson(`/api/datapoints/${state.current.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ revision: state.current.revision, pcs7Reviewed: !reviewed }),
+    });
+    markSessionEdited(updated.id);
+    populateEditor(updated);
+    await reload();
+    showToast(reviewed ? "Manuelle PCS7-Prüfung zurückgenommen." : "PCS7-Abweichung als manuell geprüft markiert.");
+  } catch (error) {
+    showToast(error.status === 409 ? "Der Datensatz wurde zwischenzeitlich geändert." : error.message, true);
+    if (error.status === 409) await reload().catch(() => {});
+  } finally {
+    button.disabled = false;
+  }
 }
 
 function closeEditor() {
@@ -704,6 +804,67 @@ async function uploadDpl() {
   }
 }
 
+function showPCS7Result(message, isError = false) {
+  const result = $("#pcs7-result");
+  result.hidden = false;
+  result.className = isError ? "pcs7-result is-error" : "pcs7-result";
+  result.textContent = message;
+}
+
+function selectPCS7Files(fileList) {
+  $("#pcs7-result").hidden = true;
+  const files = [...(fileList || [])];
+  const invalid = files.find((file) => !file.name.toLocaleLowerCase("de").endsWith(".xlsx") || file.size > 25 * 1024 * 1024);
+  if (invalid) {
+    state.pcs7Files = [];
+    $("#pcs7-selection").hidden = true;
+    showPCS7Result(`„${invalid.name}“ ist keine gültige XLSX-Datei bis 25 MB.`, true);
+    return;
+  }
+  state.pcs7Files = files;
+  $("#pcs7-selection").hidden = !files.length;
+  $("#pcs7-selected-files").innerHTML = files.map((file) => `
+    <div><strong>${escapeHtml(file.name)}</strong><span>${formatFileSize(file.size)}</span></div>`).join("");
+}
+
+async function uploadPCS7Files() {
+  if (!state.pcs7Files.length) return;
+  const files = [...state.pcs7Files];
+  const button = $("#pcs7-upload-start");
+  button.disabled = true;
+  $("#pcs7-selection").hidden = true;
+  $("#pcs7-upload-progress").hidden = false;
+  $("#pcs7-drop-zone").classList.add("is-disabled");
+  const imported = [];
+  try {
+    for (let index = 0; index < files.length; index += 1) {
+      const file = files[index];
+      text("#pcs7-progress-text", `${index + 1} von ${files.length}: ${file.name}`);
+      const result = await fetchJson("/api/import-pcs7", {
+        method: "POST",
+        headers: {
+          "Content-Type": file.type || "application/octet-stream",
+          "X-Filename": encodeURIComponent(file.name),
+        },
+        body: file,
+      });
+      imported.push(`${result.kind_label}: ${result.reference_count} Referenzen`);
+    }
+    state.pcs7Files = [];
+    $("#pcs7-upload-input").value = "";
+    await reload();
+    showPCS7Result(`PCS7-Prüfung aktualisiert: ${imported.join(" · ")}. Unstimmigkeiten sind in der Datensatzliste markiert.`);
+  } catch (error) {
+    $("#pcs7-selection").hidden = false;
+    showPCS7Result(`PCS7-Datei konnte nicht übernommen werden: ${error.message}`, true);
+    await reload().catch(() => {});
+  } finally {
+    button.disabled = false;
+    $("#pcs7-upload-progress").hidden = true;
+    $("#pcs7-drop-zone").classList.remove("is-disabled");
+  }
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
   prepareAggregationSelects();
 
@@ -720,6 +881,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     updateProviderState();
     updateDirtyState();
   });
+  $("#pcs7-review-button").addEventListener("click", togglePCS7Review);
 
   $("#search").addEventListener("input", () => {
     window.clearTimeout(state.searchTimer);
@@ -756,6 +918,29 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#dpl-drop-zone").addEventListener("drop", (event) => {
     selectUploadFile(event.dataTransfer.files[0]);
   });
+
+  $("#pcs7-upload-input").addEventListener("change", (event) => selectPCS7Files(event.target.files));
+  $("#pcs7-upload-start").addEventListener("click", uploadPCS7Files);
+  $("#pcs7-drop-zone").addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      $("#pcs7-upload-input").click();
+    }
+  });
+  ["dragenter", "dragover"].forEach((name) => {
+    $("#pcs7-drop-zone").addEventListener(name, (event) => {
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "copy";
+      $("#pcs7-drop-zone").classList.add("is-dragging");
+    });
+  });
+  ["dragleave", "drop"].forEach((name) => {
+    $("#pcs7-drop-zone").addEventListener(name, (event) => {
+      event.preventDefault();
+      $("#pcs7-drop-zone").classList.remove("is-dragging");
+    });
+  });
+  $("#pcs7-drop-zone").addEventListener("drop", (event) => selectPCS7Files(event.dataTransfer.files));
 
   document.querySelectorAll(".export-link").forEach((link) => {
     link.addEventListener("click", (event) => {

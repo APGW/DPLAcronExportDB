@@ -114,6 +114,34 @@ def _name(acron_prefix: str, long_name: str) -> str:
     return f"{acron_prefix}{long_name.strip()}"
 
 
+def _export_filename(project_name: str, kind: str) -> str:
+    stem = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "_", project_name).strip(" .")
+    stem = re.sub(r"\s+", " ", stem) or "Projekt"
+    return f"{stem} {kind}.csv"
+
+
+def _project_name(metadata_value: Any, source_name: str) -> str:
+    name = _text(metadata_value)
+    if name and "�" not in name and "\ufffd" not in name and "…" not in name:
+        return name
+    fallback = Path(source_name).stem
+    fallback = re.sub(r"^\d{4}-\d{2}-\d{2}\s*", "", fallback)
+    fallback = re.sub(r"^DPL[_\s-]*", "", fallback, flags=re.IGNORECASE)
+    fallback = re.sub(r"\s*\([^)]*\).*$", "", fallback)
+    fallback = re.sub(r"[_\s-]+Acron(?:\s*-\s*Kopie)?$", "", fallback, flags=re.IGNORECASE)
+    return fallback.strip(" _-") or name
+
+
+def _provider_group(template_group: str, project_name: str) -> str:
+    prefix, separator, _ = template_group.rpartition("|")
+    return f"{prefix}|{project_name}" if separator else project_name
+
+
+def _set_template_group(headers: list[str], defaults: list[str], group: str) -> None:
+    if "Group" in headers:
+        defaults[headers.index("Group")] = group
+
+
 def _bounds(data_type: str, source_min: Any, source_max: Any) -> tuple[str, str]:
     minimum = _number_text(source_min)
     maximum = _number_text(source_max)
@@ -189,6 +217,55 @@ def _selected_rows(sheet: Sheet) -> list[tuple[int, str, dict[int, Any]]]:
     return selected
 
 
+def _automatic_formulas(
+    selected: list[tuple[int, str, dict[int, Any]]], ba_number: str
+) -> dict[int, str]:
+    entries = []
+    for source_row, _, values in selected:
+        vg_short = _text(values.get(8)) or _text(values.get(5))
+        entries.append(
+            {
+                "row": source_row,
+                "identification": _identification(ba_number, vg_short),
+                "long_name": _text(values.get(4)).casefold(),
+                "value_type": _text(values.get(40)).casefold(),
+            }
+        )
+
+    formulas: dict[int, str] = {}
+    rules = (
+        ("fördermenge", re.compile(r"_M(\d+)_.*BER_VOL$", re.IGNORECASE)),
+        ("förderleistung", re.compile(r"_M(\d+)_.*BER_QIST$", re.IGNORECASE)),
+    )
+    for target in entries:
+        if "rechenwert" not in target["value_type"]:
+            continue
+        for label, pattern in rules:
+            machine_total = "aller maschinen" in target["long_name"]
+            single_system = "fördersystem" in target["long_name"]
+            if label not in target["long_name"] or not (machine_total or single_system):
+                continue
+            sources = []
+            for candidate in entries:
+                match = pattern.search(candidate["identification"])
+                if match:
+                    sources.append((int(match.group(1)), candidate["row"], candidate["identification"]))
+            if sources:
+                formulas[target["row"]] = " + ".join(
+                    identification for _, _, identification in sorted(sources)
+                )
+            break
+        if "stromverbrauch" in target["long_name"]:
+            energy_sources = sorted(
+                candidate["identification"]
+                for candidate in entries
+                if re.search(r"_WEL_(?:HT|NT)_HAND$", candidate["identification"], re.IGNORECASE)
+            )
+            if energy_sources:
+                formulas[target["row"]] = " + ".join(energy_sources)
+    return formulas
+
+
 def import_project(
     database: DatabaseTarget,
     dpl_path: Path,
@@ -229,16 +306,23 @@ def import_project(
             ) from exc
         selected = _selected_rows(analog_values)
         if not selected:
-            raise ValueError("In PWK_Analogwerte wurden keine gelb/orange markierten Zeilen gefunden.")
+            raise ValueError(
+                "In PWK_Analogwerte wurden keine gelb ausgewählten Zeilen oder orange geänderten Zellen gefunden."
+            )
 
-        project_name = _text(metadata.value(3, 2))
+        project_name = _project_name(metadata.value(3, 2), source_filename or dpl_path.name)
         ba_number = _text(metadata.value(5, 2))
         acron_prefix = _normalize_prefix(metadata.value(6, 2))
         if not ba_number or not project_name:
             raise ValueError("Projektname oder BA-Nummer fehlen in der Anlagenhistorie.")
 
-        acron_headers, acron_defaults, acron_group_root = _read_acron_template(acron_template_path)
-        provider_headers, provider_defaults, provider_group_root = _read_provider_template(provider_template_path)
+        acron_headers, acron_defaults, _ = _read_acron_template(acron_template_path)
+        provider_headers, provider_defaults, template_provider_group = _read_provider_template(provider_template_path)
+        acron_group_root = project_name
+        provider_group_root = _provider_group(template_provider_group, project_name)
+        _set_template_group(acron_headers, acron_defaults, acron_group_root)
+        _set_template_group(provider_headers, provider_defaults, provider_group_root)
+        automatic_formulas = _automatic_formulas(selected, ba_number)
     except Exception:
         connection.close()
         raise
@@ -261,8 +345,8 @@ def import_project(
                 acron_prefix,
                 acron_group_root,
                 provider_group_root,
-                "braukgraben_neu.csv",
-                "shhamm_provider1_WINCC60.csv",
+                _export_filename(project_name, "VG"),
+                _export_filename(project_name, "PV"),
                 str(dpl_path.resolve()),
                 str(acron_template_path.resolve()),
                 str(provider_template_path.resolve()),
@@ -281,7 +365,9 @@ def import_project(
         _store_template(connection, project_id, "provider", provider_headers, provider_defaults)
 
         provider_count = 0
-        for source_row, marker, values in selected:
+        for source_row, marker_state, values in selected:
+            marker = "orange" if marker_state in {"orange", "orange_changed"} else "yellow"
+            has_orange_changes = int(marker_state in {"yellow_with_orange", "orange_changed", "orange"})
             long_name = _text(values.get(4))
             vg_short = _text(values.get(8)) or _text(values.get(5))
             source_data_type = _text(values.get(44)).upper()
@@ -307,12 +393,12 @@ def import_project(
                 """
                 INSERT INTO datapoints(
                     project_id, import_id, source_sheet, source_row, source_number,
-                    marker_color, folder_level1, folder_level2, class_name,
+                    marker_color, has_orange_changes, folder_level1, folder_level2, class_name,
                     source_long_name, source_vg_short, source_pcs7_variable,
                     source_unit, source_decimals, source_archive, source_cycle_seconds,
                     source_delta1, source_value_type, source_data_type, source_range_min,
                     source_range_max, source_acron_long, source_acron_short
-                ) VALUES (?, ?, 'PWK_Analogwerte', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, 'PWK_Analogwerte', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
@@ -320,6 +406,7 @@ def import_project(
                     source_row,
                     _text(values.get(2)),
                     marker,
+                    has_orange_changes,
                     folder_level1,
                     _text(values.get(1)),
                     _text(values.get(3)),
@@ -359,7 +446,7 @@ def import_project(
                     0 if variable_type == 2 else None,
                     source_min,
                     source_max,
-                    source_pcs7 if variable_type == 0 else "",
+                    source_pcs7 if variable_type == 0 else automatic_formulas.get(source_row, ""),
                     pval_handling,
                     _text(values.get(10)),
                     decimals,

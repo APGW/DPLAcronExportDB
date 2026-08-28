@@ -31,7 +31,7 @@
         <div class="upload-copy">
           <p class="eyebrow">Neue Datenpunktliste</p>
           <h1 id="upload-title">DPL hochladen und automatisch aufbereiten</h1>
-          <p>Wählen Sie eine DPL im XLSX-Format. Das Programm übernimmt ausschließlich gelb oder orange markierte Datensätze und prüft sie vor dem Austausch.</p>
+          <p>Wählen Sie eine DPL im XLSX-Format. Das Programm übernimmt gelb markierte Datensätze sowie jeden Datensatz mit mindestens einer orange geänderten Zelle.</p>
           <ul class="upload-rules">
             <li>Erwartetes Tabellenblatt: <strong>PWK_Analogwerte</strong></li>
             <li>Maximale Dateigröße: <strong>25 MB</strong></li>
@@ -60,6 +60,43 @@
         </div>
       </section>
 
+      <section class="pcs7-section" aria-labelledby="pcs7-title">
+        <details id="pcs7-panel">
+          <summary>
+            <span>
+              <span class="eyebrow">Optionale Quellprüfung</span>
+              <strong id="pcs7-title">PCS7-Exporte abgleichen</strong>
+              <small id="pcs7-summary-text">Noch keine PCS7-Exporte hochgeladen.</small>
+            </span>
+            <span class="pcs7-summary-state" id="pcs7-summary-state">Optional</span>
+          </summary>
+          <div class="pcs7-content">
+            <div class="pcs7-explanation">
+              <h3>Variablen vor dem Export gegen PCS7 prüfen</h3>
+              <p>Laden Sie Parameter, Signale und Meldungen gemeinsam oder einzeln hoch. Der Parameterexport aktiviert die vollständige Prüfung; Signale und Meldungen ergänzen weitere Referenzen.</p>
+              <div class="pcs7-imports" id="pcs7-imports" aria-live="polite"></div>
+            </div>
+            <div class="pcs7-upload">
+              <input class="sr-only" id="pcs7-upload-input" type="file" multiple accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+              <label class="pcs7-drop-zone" id="pcs7-drop-zone" for="pcs7-upload-input" tabindex="0">
+                <span class="upload-file-icon" aria-hidden="true">PCS7</span>
+                <strong>PCS7-Dateien auswählen</strong>
+                <span>Parameter, Signale und/oder Meldungen · je max. 25 MB</span>
+              </label>
+              <div class="pcs7-selection" id="pcs7-selection" hidden>
+                <div id="pcs7-selected-files"></div>
+                <button class="button button-primary" id="pcs7-upload-start" type="button">Dateien prüfen und übernehmen</button>
+              </div>
+              <div class="upload-progress" id="pcs7-upload-progress" hidden role="status" aria-live="polite">
+                <span class="spinner" aria-hidden="true"></span>
+                <div><strong>PCS7-Referenzen werden eingelesen …</strong><span id="pcs7-progress-text">Dateien werden geprüft.</span></div>
+              </div>
+              <div class="pcs7-result" id="pcs7-result" hidden role="status" aria-live="polite"></div>
+            </div>
+          </div>
+        </details>
+      </section>
+
       <section class="project-intro" aria-labelledby="project-name">
         <div>
           <p class="eyebrow">Aktives Projekt</p>
@@ -75,7 +112,7 @@
             <p class="eyebrow">Schnellstart</p>
             <h2 id="workflow-title">In drei Schritten zum fertigen Export</h2>
           </div>
-          <p>Gelb und orange markierte DPL-Zeilen sind bereits übernommen. Sie müssen nur offene Punkte prüfen.</p>
+          <p>Gelb ausgewählte DPL-Zeilen und orange geänderte Zellen sind bereits erkannt. Sie müssen nur offene Punkte prüfen.</p>
         </div>
 
         <ol class="workflow-steps">
@@ -142,6 +179,8 @@
               <option value="attention">Nur Handlungsbedarf</option>
               <option value="error">Nur Fehler</option>
               <option value="warning">Nur Hinweise</option>
+              <option value="pcs7">Nur PCS7-Abweichungen</option>
+              <option value="pcs7_reviewed">Nur manuell geprüfte PCS7-Abweichungen</option>
               <option value="ready">Nur bereit</option>
             </select>
           </label>
@@ -154,9 +193,10 @@
           <label>
             <span>DPL-Markierung</span>
             <select id="marker-filter">
-              <option value="">Gelb und Orange</option>
+              <option value="">Alle Markierungen</option>
               <option value="yellow">Nur Gelb</option>
               <option value="orange">Nur Orange</option>
+              <option value="orange_changes">Mit orange geänderten Zellen</option>
             </select>
           </label>
           <button class="filter-reset" id="reset-filters" type="button">Filter zurücksetzen</button>
@@ -187,7 +227,7 @@
 
         <div class="workspace-foot">
           <span>Türkis markierte Zeilen wurden in dieser Browser-Sitzung bearbeitet.</span>
-          <span><i class="marker yellow"></i> Gelb <i class="marker orange"></i> Orange</span>
+          <span><i class="marker yellow"></i> Gelb ausgewählt <i class="marker orange-change"></i> Orange Zelle geändert</span>
         </div>
       </section>
 
@@ -218,7 +258,7 @@
             <div class="file-badge" aria-hidden="true">CSV</div>
             <div>
               <p class="eyebrow">Acron-Import</p>
-              <h3 id="acron-filename">braukgraben_neu.csv</h3>
+              <h3 id="acron-filename">Projekt VG.csv</h3>
               <p><strong id="export-acron-count">–</strong> aktive Datensätze, einschließlich Hand- und Rechenwerte.</p>
             </div>
             <a class="button button-primary export-link" data-export-kind="acron" href="/api/exports/acron" download>Acron CSV herunterladen</a>
@@ -227,7 +267,7 @@
             <div class="file-badge provider" aria-hidden="true">CSV</div>
             <div>
               <p class="eyebrow">WinCC-Provider</p>
-              <h3 id="provider-filename">shhamm_provider1_WINCC60.csv</h3>
+              <h3 id="provider-filename">Projekt PV.csv</h3>
               <p><strong id="export-provider-count">–</strong> Onlinewerte mit PCS7-Prozessdatenverknüpfung.</p>
             </div>
             <a class="button button-dark export-link" data-export-kind="provider" href="/api/exports/provider" download>Provider CSV herunterladen</a>
@@ -266,6 +306,13 @@
               <div><dt>Einheit / Nachkommastellen</dt><dd id="source-unit">–</dd></div>
               <div><dt>Fundstelle</dt><dd id="source-position">–</dd></div>
             </dl>
+            <div class="pcs7-review-control" id="pcs7-review-control" hidden>
+              <div>
+                <strong id="pcs7-review-title">PCS7-Abweichung manuell prüfen</strong>
+                <p id="pcs7-review-detail">–</p>
+              </div>
+              <button class="button button-secondary" id="pcs7-review-button" type="button">Als geprüft markieren</button>
+            </div>
           </section>
 
           <section class="form-section required-section" aria-labelledby="required-title">

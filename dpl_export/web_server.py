@@ -20,6 +20,7 @@ from .service import (
     update_datapoint,
 )
 from .upload import MAX_UPLOAD_BYTES, import_uploaded_dpl
+from .pcs7 import import_pcs7_export
 
 
 WEB_ROOT = Path(__file__).with_name("web")
@@ -215,6 +216,17 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                     PROVIDER_TEMPLATE,
                     data_directory=self.data_directory,
                 )
+                self._send_json(result, HTTPStatus.CREATED)
+                return
+            if parsed.path == "/api/import-pcs7":
+                filename, content = self._read_upload()
+                result = import_pcs7_export(
+                    self.database,
+                    filename,
+                    content,
+                    data_directory=self.data_directory,
+                )
+                result["summary"] = project_summary(self.database)
                 self._send_json(result, HTTPStatus.CREATED)
                 return
             self._error(HTTPStatus.NOT_FOUND, "Route nicht gefunden.")

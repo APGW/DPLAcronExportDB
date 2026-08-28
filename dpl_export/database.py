@@ -143,8 +143,16 @@ def _sqlite_columns(connection: DatabaseConnection, table: str) -> set[str]:
 
 
 def _sqlite_migrations(connection: DatabaseConnection) -> None:
+    if "has_orange_changes" not in _sqlite_columns(connection, "datapoints"):
+        connection.execute(
+            "ALTER TABLE datapoints ADD COLUMN has_orange_changes INTEGER NOT NULL DEFAULT 0"
+        )
     if "row_version" not in _sqlite_columns(connection, "datapoints"):
         connection.execute("ALTER TABLE datapoints ADD COLUMN row_version INTEGER NOT NULL DEFAULT 1")
+    if "pcs7_reviewed" not in _sqlite_columns(connection, "datapoints"):
+        connection.execute("ALTER TABLE datapoints ADD COLUMN pcs7_reviewed INTEGER NOT NULL DEFAULT 0")
+    if "pcs7_reviewed_at" not in _sqlite_columns(connection, "datapoints"):
+        connection.execute("ALTER TABLE datapoints ADD COLUMN pcs7_reviewed_at TEXT")
     if "changed_by_user_id" in _sqlite_columns(connection, "audit_log"):
         connection.commit()
         connection.raw.execute("PRAGMA foreign_keys = OFF")
@@ -183,7 +191,17 @@ def _sqlite_migrations(connection: DatabaseConnection) -> None:
 
 def _mariadb_migrations(connection: DatabaseConnection) -> None:
     connection.execute(
+        "ALTER TABLE datapoints ADD COLUMN IF NOT EXISTS "
+        "has_orange_changes TINYINT(1) NOT NULL DEFAULT 0"
+    )
+    connection.execute(
         "ALTER TABLE datapoints ADD COLUMN IF NOT EXISTS row_version BIGINT UNSIGNED NOT NULL DEFAULT 1"
+    )
+    connection.execute(
+        "ALTER TABLE datapoints ADD COLUMN IF NOT EXISTS pcs7_reviewed TINYINT(1) NOT NULL DEFAULT 0"
+    )
+    connection.execute(
+        "ALTER TABLE datapoints ADD COLUMN IF NOT EXISTS pcs7_reviewed_at TIMESTAMP NULL"
     )
     constraints = connection.execute(
         """

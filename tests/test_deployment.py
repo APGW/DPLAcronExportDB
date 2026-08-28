@@ -36,6 +36,14 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("font-family: Manrope", styles)
         self.assertIn("border-bottom: 6px solid var(--blue)", styles)
 
+    def test_pcs7_review_is_available_directly_in_each_table_row(self) -> None:
+        application = (ROOT / "dpl_export" / "web" / "app.js").read_text(encoding="utf-8")
+        styles = (ROOT / "dpl_export" / "web" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("row-review-button", application)
+        self.assertIn("Als geprüft", application)
+        self.assertIn("pcs7Reviewed: !reviewed", application)
+        self.assertIn(".row-review-button", styles)
+
     def test_systemd_service_uses_local_mariadb_configuration(self) -> None:
         service = (ROOT / "deploy" / "dpl-acron.service").read_text(encoding="utf-8")
         self.assertIn("Wants=mariadb.service", service)

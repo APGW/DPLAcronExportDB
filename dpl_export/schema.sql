@@ -35,6 +35,7 @@ CREATE TABLE IF NOT EXISTS datapoints (
     source_row INTEGER NOT NULL,
     source_number TEXT,
     marker_color TEXT NOT NULL CHECK(marker_color IN ('yellow', 'orange')),
+    has_orange_changes INTEGER NOT NULL DEFAULT 0 CHECK(has_orange_changes IN (0, 1)),
     folder_level1 TEXT,
     folder_level2 TEXT,
     class_name TEXT,
@@ -53,6 +54,8 @@ CREATE TABLE IF NOT EXISTS datapoints (
     source_acron_long TEXT,
     source_acron_short TEXT,
     enabled INTEGER NOT NULL DEFAULT 1 CHECK(enabled IN (0, 1)),
+    pcs7_reviewed INTEGER NOT NULL DEFAULT 0 CHECK(pcs7_reviewed IN (0, 1)),
+    pcs7_reviewed_at TEXT,
     row_version INTEGER NOT NULL DEFAULT 1,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
@@ -130,3 +133,32 @@ CREATE TABLE IF NOT EXISTS audit_log (
     new_value TEXT,
     changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS pcs7_imports (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL CHECK(kind IN ('parameter', 'signals', 'alarms')),
+    source_filename TEXT NOT NULL,
+    source_sha256 TEXT NOT NULL,
+    reference_count INTEGER NOT NULL,
+    imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(project_id, kind)
+);
+
+CREATE TABLE IF NOT EXISTS pcs7_references (
+    id INTEGER PRIMARY KEY,
+    import_id INTEGER NOT NULL REFERENCES pcs7_imports(id) ON DELETE CASCADE,
+    endpoint_key TEXT NOT NULL,
+    plan_name TEXT NOT NULL,
+    block_name TEXT NOT NULL,
+    connection_name TEXT NOT NULL,
+    data_type TEXT,
+    unit TEXT,
+    comment TEXT,
+    source_sheet TEXT NOT NULL,
+    source_row INTEGER NOT NULL,
+    UNIQUE(import_id, source_sheet, source_row)
+);
+
+CREATE INDEX IF NOT EXISTS idx_pcs7_import_project ON pcs7_imports(project_id, kind);
+CREATE INDEX IF NOT EXISTS idx_pcs7_reference_key ON pcs7_references(endpoint_key);

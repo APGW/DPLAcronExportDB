@@ -24,6 +24,21 @@ INDEXED_COLORS = {
     45: "FFCC00",
 }
 
+THEME_COLOR_NAMES = (
+    "lt1",
+    "dk1",
+    "lt2",
+    "dk2",
+    "accent1",
+    "accent2",
+    "accent3",
+    "accent4",
+    "accent5",
+    "accent6",
+    "hlink",
+    "folHlink",
+)
+
 
 @dataclass(frozen=True)
 class Cell:
@@ -91,22 +106,22 @@ def marker_from_rgb(rgb: str | None) -> str | None:
 
 def row_marker(sheet: Sheet, row_number: int, start_column: int = 0, end_column: int = 57) -> str | None:
     row = sheet.rows.get(row_number, {})
-    leading = row.get(start_column)
-    if leading:
-        marker = marker_from_rgb(leading.fill_rgb)
-        if marker:
-            return marker
-
     markers = [
         marker_from_rgb(cell.fill_rgb)
         for column, cell in row.items()
         if start_column <= column <= end_column
     ]
-    markers = [marker for marker in markers if marker]
+    has_orange = "orange" in markers
     row_width = end_column - start_column + 1
-    for marker in ("yellow", "orange"):
-        if markers.count(marker) >= int(row_width * 0.80):
-            return marker
+    threshold = int(row_width * 0.80)
+    if markers.count("yellow") >= threshold:
+        return "yellow_with_orange" if has_orange else "yellow"
+    if markers.count("orange") >= threshold:
+        return "orange"
+    # Einzelne orange Zellen kennzeichnen fachlich geänderte Datensätze auch
+    # dann, wenn die restliche Zeile nicht vollflächig gelb formatiert ist.
+    if has_orange:
+        return "orange_changed"
     return None
 
 
@@ -120,8 +135,41 @@ def _shared_strings(archive: zipfile.ZipFile) -> list[str]:
     ]
 
 
+def _theme_colors(archive: zipfile.ZipFile) -> dict[int, str]:
+    theme_paths = [name for name in archive.namelist() if name.startswith("xl/theme/theme") and name.endswith(".xml")]
+    if not theme_paths:
+        return {}
+    root = ET.fromstring(archive.read(sorted(theme_paths)[0]))
+    scheme = next((node for node in root.iter() if node.tag.endswith("}clrScheme")), None)
+    if scheme is None:
+        return {}
+    by_name: dict[str, str] = {}
+    for item in scheme:
+        name = item.tag.rsplit("}", 1)[-1]
+        color_node = next(iter(item), None)
+        if color_node is None:
+            continue
+        color = color_node.attrib.get("lastClr") or color_node.attrib.get("val")
+        if color:
+            by_name[name] = color[-6:].upper()
+    return {
+        index: by_name[name]
+        for index, name in enumerate(THEME_COLOR_NAMES)
+        if name in by_name
+    }
+
+
+def _apply_tint(rgb: str, tint: float) -> str:
+    red, green, blue = (int(rgb[index : index + 2], 16) / 255 for index in (0, 2, 4))
+    hue, luminance, saturation = colorsys.rgb_to_hls(red, green, blue)
+    luminance = luminance * (1 + tint) if tint < 0 else luminance * (1 - tint) + tint
+    tinted = colorsys.hls_to_rgb(hue, max(0, min(1, luminance)), saturation)
+    return "".join(f"{round(channel * 255):02X}" for channel in tinted)
+
+
 def _style_fills(archive: zipfile.ZipFile) -> list[str | None]:
     root = ET.fromstring(archive.read("xl/styles.xml"))
+    theme_colors = _theme_colors(archive)
     fills: list[str | None] = []
     for fill in root.findall("x:fills/x:fill", NS):
         pattern = fill.find("x:patternFill", NS)
@@ -133,6 +181,10 @@ def _style_fills(archive: zipfile.ZipFile) -> list[str | None]:
                     color = foreground.attrib["rgb"][-6:].upper()
                 elif "indexed" in foreground.attrib:
                     color = INDEXED_COLORS.get(int(foreground.attrib["indexed"]))
+                elif "theme" in foreground.attrib:
+                    color = theme_colors.get(int(foreground.attrib["theme"]))
+                    if color and "tint" in foreground.attrib:
+                        color = _apply_tint(color, float(foreground.attrib["tint"]))
         fills.append(color)
 
     style_fills: list[str | None] = []

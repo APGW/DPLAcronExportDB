@@ -29,14 +29,14 @@ def _safe_filename(filename: str) -> str:
     return f"{stem}.xlsx"
 
 
-def validate_xlsx_upload(filename: str, content: bytes) -> str:
+def validate_xlsx_upload(filename: str, content: bytes, artifact: str = "DPL") -> str:
     if Path(Path(filename).name).suffix.casefold() != ".xlsx":
-        raise ValueError("Bitte wählen Sie eine DPL im Format .xlsx aus.")
+        raise ValueError(f"Bitte wählen Sie {artifact} im Format .xlsx aus.")
     safe_name = _safe_filename(filename)
     if not content:
         raise ValueError("Die ausgewählte Datei ist leer.")
     if len(content) > MAX_UPLOAD_BYTES:
-        raise ValueError("Die DPL ist größer als 25 MB.")
+        raise ValueError(f"{artifact} ist größer als 25 MB.")
     if not content.startswith(b"PK"):
         raise ValueError("Die Datei ist keine gültige XLSX-Arbeitsmappe.")
 

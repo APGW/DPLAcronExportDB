@@ -1,7 +1,8 @@
 # DPL → Acron Export
 
-Der Webdienst liest gelb oder orange markierte Datensätze aus einer hochgeladenen
-DPL, stellt sie zur gemeinsamen Korrektur bereit und erzeugt getrennte Acron- und
+Der Webdienst liest gelb ausgewählte Datensätze sowie Datensätze mit mindestens
+einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemeinsamen
+Korrektur bereit und erzeugt getrennte Acron- und
 WINCC60-Provider-Exporte.
 
 ## Vorgesehener Betrieb
@@ -48,17 +49,45 @@ einer isolierten SQLite-Prüfdatenbank vollständig validiert. Erst anschließen
 wird der aktive MariaDB-Datenstand innerhalb einer Transaktion ersetzt.
 
 - erforderliche Blätter: `Info und Historie AnlagenDPL` und `PWK_Analogwerte`
-- Auswahl: ausschließlich gelb oder orange markierte Datensätze
+- Auswahl: vollflächig gelbe Zeilen und jeder Datensatz mit mindestens einer orange geänderten Zelle
+- orange geänderte Zellen: gesonderte Kennzeichnung und Filter im Webinterface
+- Rechenwerte: automatische Summenformeln aus den tatsächlich ausgewählten Maschinenwerten
 - gültige Uploads: `data/imports` beziehungsweise `/var/lib/dpl-acron/data/imports`
 - ungültige oder unvollständige Dateien verändern das aktive Projekt nicht
 - bereits geöffnete Datensätze müssen nach einem neuen DPL-Import neu geladen werden
 
+## Optionale PCS7-Prüfung
+
+Im aufklappbaren Bereich „PCS7-Exporte abgleichen“ können Parameter-, Signal-
+und Meldungsexporte im XLSX-Format hochgeladen werden. Die Exportart wird anhand
+der Spalten automatisch erkannt. Pro Exportart bleibt der zuletzt hochgeladene
+Stand aktiv.
+
+- `Plan/Baustein.Anschluss#Value` aus der DPL wird gegen die PCS7-Struktur geprüft
+- strukturierte PCS7-Anschlüsse wie `.Value` werden korrekt zugeordnet
+- DPL-Quelle, Acron-Formel und Provider-Variablenname werden auf dieselbe Referenz geprüft
+- konkrete Datentypen werden zwischen DPL und PCS7 verglichen
+- fehlende Pläne, Bausteine und Anschlüsse erscheinen als markierte Fehler
+- die DPL ist der führende Filter: zusätzliche PCS7-Referenzen außerhalb der DPL erzeugen keine Meldung
+- Abweichungen können pro DPL-Datensatz manuell als geprüft bestätigt und wieder geöffnet werden
+- eine manuell bestätigte Abweichung bleibt sichtbar, blockiert den Export aber nicht mehr
+- jeder neue PCS7-Upload setzt manuelle Bestätigungen zurück
+- ohne Parameterexport bleibt die Negativprüfung inaktiv, damit Teil-Exporte keine Fehlalarme erzeugen
+- PCS7-Dateien liegen unter `data/pcs7` beziehungsweise `/var/lib/dpl-acron/data/pcs7`
+
+Ein neuer DPL-Import ersetzt das Projekt und entfernt damit auch die bisherigen
+PCS7-Referenzen. Anschließend müssen die zum neuen DPL-Stand gehörenden
+PCS7-Exporte erneut hochgeladen werden.
+
 ## Export
 
-Die Oberfläche erzeugt:
+Die Oberfläche erzeugt die Dateinamen dynamisch aus der Projektbezeichnung:
 
-- `braukgraben_neu.csv`
-- `shhamm_provider1_WINCC60.csv`
+- `<Projektbezeichnung> VG.csv`
+- `<Projektbezeichnung> PV.csv`
+
+Auch die Acron- und Provider-Gruppen werden bei jedem DPL-Import auf die aktuelle
+Projektbezeichnung umgestellt.
 
 Der Acron-Export enthält alle aktivierten Datensätze. Der Provider-Export
 enthält ausschließlich aktivierte Onlinewerte mit PCS7-Quelle. Hand- und

@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any, Callable
 
 from .database import DatabaseConnection, DatabaseTarget, connect, transaction
+from .pcs7 import PCS7_KINDS, endpoint_candidates, normalize_endpoint
 
 
 class RevisionConflictError(Exception):
@@ -128,6 +129,136 @@ def validation_issues(record: dict[str, Any], duplicate_count: int = 1) -> list[
     return issues
 
 
+def _pcs7_context(connection: DatabaseConnection, project_id: int) -> dict[str, Any]:
+    imports = connection.execute(
+        """
+        SELECT id, kind, source_filename, reference_count, imported_at
+        FROM pcs7_imports WHERE project_id = ? ORDER BY kind
+        """,
+        (project_id,),
+    ).fetchall()
+    imported = [_as_dict(row) for row in imports]
+    if not imported:
+        return {"active": False, "imports": [], "references": {}, "plans": set(), "blocks": set()}
+    references = connection.execute(
+        """
+        SELECT r.*, i.kind
+        FROM pcs7_references r
+        JOIN pcs7_imports i ON i.id = r.import_id
+        WHERE i.project_id = ?
+        """,
+        (project_id,),
+    ).fetchall()
+    by_key: dict[str, list[dict[str, Any]]] = {}
+    plans: set[str] = set()
+    blocks: set[str] = set()
+    for row in references:
+        item = _as_dict(row)
+        key = str(item["endpoint_key"])
+        by_key.setdefault(key, []).append(item)
+        plan = normalize_endpoint(str(item["plan_name"]))
+        block = normalize_endpoint(str(item["block_name"]))
+        plans.add(plan)
+        blocks.add(f"{plan}/{block}")
+    # Der Parameterexport enthält den vollständigen Anschlusskatalog und aktiviert
+    # deshalb die Negativprüfung. Signale/Meldungen allein liefern nur Zusatztreffer.
+    return {
+        "active": any(row["kind"] == "parameter" for row in imported),
+        "imports": imported,
+        "references": by_key,
+        "plans": plans,
+        "blocks": blocks,
+    }
+
+
+def _same_pcs7_reference(left: Any, right: Any) -> bool:
+    left_candidates = set(endpoint_candidates(_string(left)))
+    right_candidates = set(endpoint_candidates(_string(right)))
+    return bool(left_candidates and right_candidates and left_candidates.intersection(right_candidates))
+
+
+def pcs7_validation(record: dict[str, Any], context: dict[str, Any]) -> tuple[list[dict[str, str]], dict[str, Any]]:
+    if not record.get("enabled") or record.get("source_value_type") != "Online":
+        return [], {"status": "not_applicable"}
+    source = _string(record.get("source_pcs7_variable"))
+    if not context["active"]:
+        return [], {"status": "not_checked"}
+
+    def issue(code: str, message: str) -> dict[str, str]:
+        return {"level": "error", "code": code, "message": message}
+
+    def finish(
+        found_issues: list[dict[str, str]], detail: dict[str, Any]
+    ) -> tuple[list[dict[str, str]], dict[str, Any]]:
+        if found_issues and record.get("pcs7_reviewed"):
+            reviewed = [
+                {**item, "level": "info", "message": f"{item['message']} Manuell geprüft."}
+                for item in found_issues
+            ]
+            return reviewed, {
+                **detail,
+                "status": "reviewed",
+                "reviewed_at": record.get("pcs7_reviewed_at"),
+                "messages": [item["message"] for item in found_issues],
+            }
+        return found_issues, detail
+
+    candidates = endpoint_candidates(source)
+    if not candidates:
+        return finish(
+            [issue("pcs7_syntax_invalid", "Die PCS7-Variable besitzt nicht das erwartete Format Plan/Baustein.Anschluss#Wert.")],
+            {"status": "mismatch"},
+        )
+    match = next(
+        (reference for candidate in candidates for reference in context["references"].get(candidate, [])),
+        None,
+    )
+    issues: list[dict[str, str]] = []
+    if not match:
+        base = source.split("#", 1)[0]
+        plan, _, remainder = base.partition("/")
+        block, _, _connection = remainder.partition(".")
+        plan_key = normalize_endpoint(plan)
+        block_key = f"{plan_key}/{normalize_endpoint(block)}"
+        if plan_key not in context["plans"]:
+            message = f"PCS7-Plan „{plan}“ wurde in den hochgeladenen Exporten nicht gefunden."
+        elif block_key not in context["blocks"]:
+            message = f"PCS7-Baustein „{block}“ wurde im Plan „{plan}“ nicht gefunden."
+        else:
+            message = f"PCS7-Anschluss aus „{source}“ wurde im Export nicht gefunden."
+        issues.append(issue("pcs7_reference_missing", message))
+    else:
+        expected_type = _string(record.get("source_data_type")).upper()
+        actual_type = _string(match.get("data_type")).upper()
+        aliases = {"BOOLEAN": "BOOL", "FLOAT": "REAL"}
+        expected_type = aliases.get(expected_type, expected_type)
+        actual_type = aliases.get(actual_type, actual_type)
+        if expected_type and actual_type and actual_type != "STRUCT" and expected_type != actual_type:
+            issues.append(issue(
+                "pcs7_datatype_mismatch",
+                f"Datentyp stimmt nicht überein: DPL {expected_type}, PCS7 {actual_type} "
+                f"({match['source_sheet']}, Zeile {match['source_row']}).",
+            ))
+    if source and not _same_pcs7_reference(source, record.get("acron_formula")):
+        issues.append(issue(
+            "pcs7_acron_reference_mismatch",
+            "Die Acron-Prozessdatenverknüpfung verweist nicht mehr auf dieselbe PCS7-Variable wie die DPL.",
+        ))
+    if record.get("provider_include_export") and source and not _same_pcs7_reference(source, record.get("provider_var_name")):
+        issues.append(issue(
+            "pcs7_provider_reference_mismatch",
+            "Der Provider-Variablenname verweist nicht mehr auf dieselbe PCS7-Variable wie die DPL.",
+        ))
+    detail = {
+        "status": "mismatch" if issues else "confirmed",
+        "matched_kind": match.get("kind") if match else None,
+        "matched_sheet": match.get("source_sheet") if match else None,
+        "matched_row": match.get("source_row") if match else None,
+        "matched_data_type": match.get("data_type") if match else None,
+    }
+    return finish(issues, detail)
+
+
 def _duplicate_counts(connection: DatabaseConnection, project_id: int) -> dict[str, int]:
     rows = connection.execute(
         """
@@ -169,13 +300,17 @@ def list_datapoints(
         where.append("source_value_type = ?")
         parameters.append(value_type)
     if marker:
-        where.append("marker_color = ?")
-        parameters.append(marker)
+        if marker == "orange_changes":
+            where.append("has_orange_changes = 1")
+        else:
+            where.append("marker_color = ?")
+            parameters.append(marker)
     records = connection.execute(
         f"SELECT * FROM v_datapoint_editor WHERE {' AND '.join(where)} ORDER BY source_row",
         parameters,
     ).fetchall()
     duplicate_counts = _duplicate_counts(connection, project["id"])
+    pcs7_context = _pcs7_context(connection, project["id"])
     result = []
     for row in records:
         record = _as_dict(row)
@@ -183,6 +318,9 @@ def list_datapoints(
             record,
             duplicate_counts.get(record["acron_identification"], 1),
         )
+        pcs7_issues, pcs7_detail = pcs7_validation(record, pcs7_context)
+        issues.extend(pcs7_issues)
+        record["pcs7"] = pcs7_detail
         record["issues"] = issues
         record["issue_level"] = next(
             (level for level in ("error", "warning", "info") if any(issue["level"] == level for issue in issues)),
@@ -206,6 +344,7 @@ def project_summary(database: DatabaseTarget, project_code: str = "braukgraben")
             SUM(enabled) AS enabled,
             SUM(CASE WHEN marker_color = 'yellow' THEN 1 ELSE 0 END) AS yellow,
             SUM(CASE WHEN marker_color = 'orange' THEN 1 ELSE 0 END) AS orange,
+            SUM(CASE WHEN has_orange_changes = 1 THEN 1 ELSE 0 END) AS orange_changes,
             SUM(CASE WHEN provider_include_export = 1 AND enabled = 1 THEN 1 ELSE 0 END) AS provider,
             SUM(CASE WHEN provider_include_export = 0 AND enabled = 1 THEN 1 ELSE 0 END) AS acron_only
         FROM v_datapoint_editor WHERE project_id = ?
@@ -222,17 +361,31 @@ def project_summary(database: DatabaseTarget, project_code: str = "braukgraben")
         """,
         (project["id"],),
     ).fetchone()
+    pcs7_context = _pcs7_context(connection, project["id"])
     connection.close()
     records = list_datapoints(database, project_code=project_code)
     issue_counts = {
         level: sum(1 for record in records for issue in record["issues"] if issue["level"] == level)
         for level in ("error", "warning", "info")
     }
+    pcs7_records = [record for record in records if record.get("pcs7", {}).get("status") != "not_applicable"]
+    pcs7_summary = {
+        "active": pcs7_context["active"],
+        "imports": [
+            {**item, "kind_label": PCS7_KINDS.get(str(item["kind"]), str(item["kind"]))}
+            for item in pcs7_context["imports"]
+        ],
+        "checked": sum(record.get("pcs7", {}).get("status") in {"confirmed", "mismatch", "reviewed"} for record in pcs7_records),
+        "confirmed": sum(record.get("pcs7", {}).get("status") == "confirmed" for record in pcs7_records),
+        "mismatches": sum(record.get("pcs7", {}).get("status") == "mismatch" for record in pcs7_records),
+        "reviewed": sum(record.get("pcs7", {}).get("status") == "reviewed" for record in pcs7_records),
+    }
     return {
         "project": _as_dict(project),
         "counts": _as_dict(counts),
         "issues": issue_counts,
         "latestImport": _as_dict(latest_import) if latest_import else None,
+        "pcs7": pcs7_summary,
         "valueTypes": sorted({record["source_value_type"] for record in records if record["source_value_type"]}),
     }
 
@@ -251,8 +404,12 @@ def get_datapoint(database: DatabaseTarget, datapoint_id: int) -> dict[str, Any]
         """,
         (record["project_id"], record["acron_identification"]),
     ).fetchone()["amount"]
+    pcs7_context = _pcs7_context(connection, record["project_id"])
     connection.close()
     record["issues"] = validation_issues(record, duplicate)
+    pcs7_issues, pcs7_detail = pcs7_validation(record, pcs7_context)
+    record["issues"].extend(pcs7_issues)
+    record["pcs7"] = pcs7_detail
     return record
 
 
@@ -319,7 +476,7 @@ def update_datapoint(
     connection = connect(database)
     try:
         current = connection.execute(
-            "SELECT enabled, row_version FROM datapoints WHERE id = ?",
+            "SELECT enabled, pcs7_reviewed, row_version FROM datapoints WHERE id = ?",
             (datapoint_id,),
         ).fetchone()
         if not current:
@@ -355,6 +512,27 @@ def update_datapoint(
                         old_value,
                         new_value,
                     )
+            if "pcs7Reviewed" in payload:
+                old_value = current["pcs7_reviewed"]
+                new_value = _boolean(payload["pcs7Reviewed"])
+                if old_value != new_value:
+                    connection.execute(
+                        """
+                        UPDATE datapoints
+                        SET pcs7_reviewed = ?,
+                            pcs7_reviewed_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END
+                        WHERE id = ?
+                        """,
+                        (new_value, new_value, datapoint_id),
+                    )
+                    _audit(connection, datapoint_id, "datapoint", "pcs7Reviewed", old_value, new_value)
+            elif payload.get("acron") or payload.get("provider"):
+                if current["pcs7_reviewed"]:
+                    connection.execute(
+                        "UPDATE datapoints SET pcs7_reviewed = 0, pcs7_reviewed_at = NULL WHERE id = ?",
+                        (datapoint_id,),
+                    )
+                    _audit(connection, datapoint_id, "datapoint", "pcs7Reviewed", 1, 0)
             _update_entity(
                 connection,
                 datapoint_id,

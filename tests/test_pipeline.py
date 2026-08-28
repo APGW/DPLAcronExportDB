@@ -8,7 +8,7 @@ import uuid
 from pathlib import Path
 
 from dpl_export.exporter import acron_export, provider_export
-from dpl_export.importer import import_project
+from dpl_export.importer import _project_name, import_project
 from dpl_export.service import (
     RevisionConflictError,
     list_datapoints,
@@ -46,6 +46,20 @@ class PipelineTest(unittest.TestCase):
         records = list_datapoints(self.database)
         self.assertEqual(55, len(records))
         self.assertEqual({"yellow"}, {record["marker_color"] for record in records})
+        orange_changed = {
+            record["acron_identification"]
+            for record in records
+            if record["has_orange_changes"]
+        }
+        self.assertEqual(
+            {
+                "702520PWK_M1_DFMS_BER_VOL",
+                "702520PWK_M1_DFMS_BER_QIST",
+                "702520PWK_M2_DFMS_BER_VOL",
+                "702520PWK_M2_BER_QIST",
+            },
+            orange_changed,
+        )
         self.assertEqual(45, sum(record["source_value_type"] == "Online" for record in records))
         self.assertEqual(4, sum(record["source_value_type"] == "Rechenwert in Acron" for record in records))
         self.assertEqual(6, sum(record["source_value_type"] == "Handwert in Acron" for record in records))
@@ -66,7 +80,7 @@ class PipelineTest(unittest.TestCase):
         )
         self.assertEqual("PWKHAMLsB_Kritische Höchststaumarke relativ", generated_row["Name"])
         self.assertEqual(
-            "PWK HAM-Lippestraße Braukgraben(BF) (SH)|1. Allgemeines / Niveaus",
+            "PWK Lippestraße; Braukgraben|1. Allgemeines / Niveaus",
             generated_row["Group"],
         )
         self.assertEqual("702520ZUL_NIVM_MSG/I.PV_Lim1#Value", generated_row["Formula"])
@@ -82,6 +96,7 @@ class PipelineTest(unittest.TestCase):
             if row["§VarName"] == "702520ZUL_NIVM_MSG/I.PV_Lim1#Value"
         )
         expected = decode_tsv(PROVIDER_TEMPLATE.read_bytes())[0]
+        expected["Group"] = "PV_vPLS_SH_Hamm|PWK Lippestraße; Braukgraben"
         self.assertEqual(expected, generated_row)
         self.assertEqual(45, len(decode_tsv(generated)))
 
@@ -124,8 +139,35 @@ class PipelineTest(unittest.TestCase):
     def test_validation_exposes_open_calculation_formulas(self) -> None:
         summary = project_summary(self.database)
         self.assertEqual(0, summary["issues"]["error"])
-        self.assertEqual(4, summary["issues"]["warning"])
+        self.assertEqual(0, summary["issues"]["warning"])
         self.assertEqual(1, summary["issues"]["info"])
+
+    def test_calculation_formulas_use_only_selected_machine_values(self) -> None:
+        records = {record["acron_identification"]: record for record in list_datapoints(self.database)}
+        self.assertEqual(
+            "702520PWK_M1_DFMS_BER_VOL + 702520PWK_M2_DFMS_BER_VOL",
+            records["702520PWK_VOL"]["acron_formula"],
+        )
+        self.assertNotIn("M3", records["702520PWK_VOL"]["acron_formula"])
+        self.assertEqual(
+            "702520EVUZ1_WEL_HT_HAND + 702520EVUZ1_WEL_NT_HAND",
+            records["702520PWK_WELV_GES"]["acron_formula"],
+        )
+
+    def test_project_name_drives_groups_and_vg_pv_filenames(self) -> None:
+        summary = project_summary(self.database)
+        self.assertEqual("PWK Lippestraße; Braukgraben VG.csv", summary["project"]["acron_filename"])
+        self.assertEqual("PWK Lippestraße; Braukgraben PV.csv", summary["project"]["provider_filename"])
+        self.assertTrue(all(
+            record["acron_group"].startswith("PWK Lippestraße; Braukgraben|")
+            for record in list_datapoints(self.database)
+        ))
+
+    def test_broken_metadata_project_name_falls_back_to_dpl_filename(self) -> None:
+        self.assertEqual(
+            "PWK HAM-Westhusen 1",
+            _project_name("PWK ……", "2024-18-11 DPL_PWK HAM-Westhusen 1 (OL-40)_Acron - Kopie.xlsx"),
+        )
 
 
 if __name__ == "__main__":
