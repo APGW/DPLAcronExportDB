@@ -52,7 +52,7 @@ class DatabaseConfigurationTest(unittest.TestCase):
             "DPL_DB_UNIX_SOCKET": "/run/mysqld/mysqld.sock",
         }
         with patch.dict(os.environ, environment, clear=True):
-            config = database_from_environment(ROOT / "data" / "fallback.sqlite")
+            config = database_from_environment()
         self.assertEqual("mariadb", config.backend)
         self.assertEqual(3307, config.port)
         self.assertEqual("dpl_test", config.name)

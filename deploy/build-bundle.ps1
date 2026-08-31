@@ -39,9 +39,9 @@ $bundleItems = @(
     "README.md",
     "DEPLOY_DEBIAN13.md",
     "PROXMOX_CT.md",
+    "TIBAUM_CHECK.md",
     "dpl_export",
     "deploy",
-    "tests",
     "brauckgraben_neu.csv.xlsx",
     "shhamm_provider1_WINCC60.csv",
     $dplSource.Name

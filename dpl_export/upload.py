@@ -2,9 +2,6 @@ from __future__ import annotations
 
 import io
 import re
-import shutil
-import sqlite3
-import uuid
 import zipfile
 from datetime import datetime, timezone
 from pathlib import Path
@@ -56,27 +53,6 @@ def validate_xlsx_upload(filename: str, content: bytes, artifact: str = "DPL") -
     return safe_name
 
 
-def _switch_to_delete_journal(database_path: Path) -> None:
-    connection = sqlite3.connect(database_path)
-    try:
-        connection.execute("PRAGMA busy_timeout = 5000")
-        connection.execute("PRAGMA wal_checkpoint(TRUNCATE)")
-        connection.execute("PRAGMA journal_mode = DELETE")
-    finally:
-        connection.close()
-
-
-def _database_integrity(database_path: Path) -> None:
-    connection = sqlite3.connect(database_path)
-    try:
-        integrity = connection.execute("PRAGMA integrity_check").fetchone()[0]
-        foreign_keys = connection.execute("PRAGMA foreign_key_check").fetchall()
-        if integrity != "ok" or foreign_keys:
-            raise ValueError("Die erzeugte Projektdatenbank hat die Integritätsprüfung nicht bestanden.")
-    finally:
-        connection.close()
-
-
 def import_uploaded_dpl(
     database: DatabaseTarget,
     filename: str,
@@ -89,43 +65,14 @@ def import_uploaded_dpl(
     safe_name = validate_xlsx_upload(filename, content)
     database_config = resolve_database(database)
     if data_directory is None:
-        if database_config.backend == "sqlite":
-            assert database_config.path is not None
-            data_directory = database_config.path.parent
-        else:
-            data_directory = Path("data")
+        data_directory = database_config.path.parent if database_config.path is not None else Path("data")
     import_directory = data_directory / "imports"
-    backup_directory = data_directory / "backups"
     import_directory.mkdir(parents=True, exist_ok=True)
-    backup_directory.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
     source_path = import_directory / f"{timestamp}-{safe_name}"
-    incoming_database = data_directory / f".incoming-{uuid.uuid4().hex}.sqlite"
-    backup_path: Path | None = None
-
     source_path.write_bytes(content)
     try:
-        validation_result = import_project(
-            incoming_database,
-            source_path,
-            acron_template_path,
-            provider_template_path,
-            source_filename=safe_name,
-        )
-        summary = project_summary(incoming_database)
-        _database_integrity(incoming_database)
-        _switch_to_delete_journal(incoming_database)
-
-        if (
-            database_config.backend == "sqlite"
-            and database_config.path is not None
-            and database_config.path.exists()
-        ):
-            _switch_to_delete_journal(database_config.path)
-            backup_path = backup_directory / f"dpl-{timestamp}.sqlite"
-            shutil.copy2(database_config.path, backup_path)
-
         result = import_project(
             database,
             source_path,
@@ -138,16 +85,13 @@ def import_uploaded_dpl(
     except Exception:
         source_path.unlink(missing_ok=True)
         raise
-    finally:
-        for suffix in ("", "-wal", "-shm"):
-            Path(f"{incoming_database}{suffix}").unlink(missing_ok=True)
 
     return {
         **result,
-        "validated_selected": validation_result["selected"],
+        "validated_selected": result["selected"],
         "source_filename": safe_name,
         "stored_source": str(source_path.resolve()),
-        "backup_filename": backup_path.name if backup_path else None,
+        "backup_filename": None,
         "backend": database_config.backend,
         "summary": summary,
     }

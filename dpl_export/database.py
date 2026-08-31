@@ -32,13 +32,10 @@ class DatabaseConfig:
 DatabaseTarget = DatabaseConfig | Path | str
 
 
-def database_from_environment(default_sqlite_path: Path) -> DatabaseConfig:
-    backend = os.environ.get("DPL_DB_DRIVER", "sqlite").strip().casefold()
-    if backend == "sqlite":
-        configured_path = os.environ.get("DPL_SQLITE_PATH")
-        return DatabaseConfig.sqlite(configured_path or default_sqlite_path)
+def database_from_environment() -> DatabaseConfig:
+    backend = os.environ.get("DPL_DB_DRIVER", "mariadb").strip().casefold()
     if backend != "mariadb":
-        raise ValueError("DPL_DB_DRIVER muss 'sqlite' oder 'mariadb' sein.")
+        raise ValueError("Der Anwendungsdienst unterstützt ausschließlich MariaDB.")
     try:
         port = int(os.environ.get("DPL_DB_PORT", "3306"))
     except ValueError as exc:

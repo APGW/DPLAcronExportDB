@@ -30,6 +30,10 @@ const state = {
   saving: false,
   editedIds: loadSessionEditedIds(),
   importFingerprint: loadSessionImportFingerprint(),
+  selectedIds: new Set(),
+  undoStack: [],
+  redoStack: [],
+  historyBusy: false,
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -63,6 +67,7 @@ function clearSessionEdited() {
     // Kein Abbruch, wenn der Browser Webspeicher blockiert.
   }
   updateSessionEditedSummary();
+  state.selectedIds.clear();
 }
 
 function syncSessionEditedDataset(summary) {
@@ -286,7 +291,7 @@ function renderRows(items) {
   const body = $("#datapoint-rows");
 
   if (!state.items.length) {
-    body.innerHTML = '<tr><td colspan="6" class="empty-state">Keine passenden Datensätze gefunden.<br>Setzen Sie die Filter zurück oder ändern Sie den Suchbegriff.</td></tr>';
+    body.innerHTML = '<tr><td colspan="7" class="empty-state">Keine passenden Datensätze gefunden.<br>Setzen Sie die Filter zurück oder ändern Sie den Suchbegriff.</td></tr>';
   } else {
     body.innerHTML = state.items.map((item) => {
       const provider = Boolean(item.provider_include_export);
@@ -299,6 +304,7 @@ function renderRows(items) {
       const rowClasses = [item.enabled ? "" : "disabled", recentlyEdited ? "recently-edited" : "", orangeChanged ? "orange-changed" : "", pcs7Mismatch ? "pcs7-mismatch" : "", pcs7Reviewed ? "pcs7-reviewed" : ""].filter(Boolean).join(" ");
       return `
         <tr data-id="${item.id}" data-revision="${item.revision}" class="${rowClasses}">
+          <td data-label="Auswahl" class="selection-cell"><input class="row-select" type="checkbox" ${state.selectedIds.has(Number(item.id)) ? "checked" : ""} aria-label="${escapeHtml(item.source_long_name)} auswählen"></td>
           <td data-label="Prüfstatus">
             ${statusLabel(item.issue_level, issueCount)}
             ${pcs7Mismatch ? '<span class="pcs7-mismatch-badge">PCS7-Abweichung</span>' : ""}
@@ -330,8 +336,14 @@ function renderRows(items) {
 
   const suffix = state.items.length === items.length ? "Datensätze" : `von ${items.length} Datensätzen`;
   text("#result-count", `${state.items.length} ${suffix} angezeigt`);
+  updateBulkToolbar();
 
   body.querySelectorAll("tr[data-id]").forEach((row) => {
+    row.querySelector(".row-select").addEventListener("change", (event) => {
+      const id = Number(row.dataset.id);
+      if (event.target.checked) state.selectedIds.add(id); else state.selectedIds.delete(id);
+      updateBulkToolbar();
+    });
     row.querySelector(".row-button").addEventListener("click", () => openEditor(Number(row.dataset.id)));
     const reviewButton = row.querySelector(".row-review-button");
     if (reviewButton) {
@@ -339,20 +351,8 @@ function renderRows(items) {
         const item = state.rawItems.find((candidate) => Number(candidate.id) === Number(row.dataset.id));
         if (!item) return;
         const reviewed = item.pcs7?.status === "reviewed";
-        reviewButton.disabled = true;
-        try {
-          const updated = await fetchJson(`/api/datapoints/${row.dataset.id}`, {
-            method: "PATCH",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ revision: Number(row.dataset.revision), pcs7Reviewed: !reviewed }),
-          });
-          markSessionEdited(updated.id);
-          await reload();
-          showToast(reviewed ? "Manuelle PCS7-Prüfung zurückgenommen." : "Datensatz als manuell geprüft markiert.");
-        } catch (error) {
-          showToast(error.status === 409 ? "Der Datensatz wurde zwischenzeitlich geändert. Die Liste wurde aktualisiert." : error.message, true);
-          await reload().catch(() => {});
-        }
+        try { await performReview([Number(row.dataset.id)], !reviewed); }
+        catch (error) { showToast(error.message, true); }
       });
     }
     row.querySelector(".row-enabled").addEventListener("change", async (event) => {
@@ -374,6 +374,87 @@ function renderRows(items) {
       }
     });
   });
+}
+
+function updateBulkToolbar() {
+  const selected = state.items.filter((item) => state.selectedIds.has(Number(item.id)));
+  $("#bulk-toolbar").hidden = !state.selectedIds.size;
+  text("#bulk-count", state.selectedIds.size);
+  $("#bulk-review").disabled = !selected.some((item) => item.pcs7?.status === "mismatch");
+  $("#bulk-unreview").disabled = !selected.some((item) => item.pcs7?.status === "reviewed");
+  const allVisible = state.items.length > 0 && state.items.every((item) => state.selectedIds.has(Number(item.id)));
+  const someVisible = state.items.some((item) => state.selectedIds.has(Number(item.id)));
+  $("#select-all-visible").checked = allVisible;
+  $("#select-all-visible").indeterminate = someVisible && !allVisible;
+}
+
+function updateHistoryOverlay() {
+  $("#undo-action").disabled = state.historyBusy || !state.undoStack.length;
+  $("#redo-action").disabled = state.historyBusy || !state.redoStack.length;
+  const latest = state.undoStack.at(-1);
+  text("#history-label", latest ? latest.label : "Keine Änderung");
+}
+
+function rememberReviewAction(ids, before, after, items) {
+  state.undoStack.push({
+    kind: "review", ids, before, after,
+    revisions: Object.fromEntries(items.map((item) => [item.id, item.revision])),
+    label: `${ids.length} ${ids.length === 1 ? "Datensatz" : "Datensätze"} ${after ? "geprüft" : "wieder geöffnet"}`,
+  });
+  if (state.undoStack.length > 30) state.undoStack.shift();
+  state.redoStack = [];
+  updateHistoryOverlay();
+}
+
+async function requestBulkReview(ids, reviewed, revisions = null) {
+  const source = new Map(state.rawItems.map((item) => [Number(item.id), item]));
+  const entries = ids.map((id) => ({
+    id,
+    revision: revisions ? Number(revisions[id]) : Number(source.get(Number(id))?.revision),
+  }));
+  return fetchJson("/api/datapoints/bulk-review", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ items: entries, reviewed }),
+  });
+}
+
+async function performReview(selectedIds, reviewed) {
+  const eligible = state.rawItems.filter((item) => selectedIds.includes(Number(item.id)) && (
+    reviewed ? item.pcs7?.status === "mismatch" : item.pcs7?.status === "reviewed"
+  ));
+  if (!eligible.length) return;
+  const ids = eligible.map((item) => Number(item.id));
+  const response = await requestBulkReview(ids, reviewed);
+  response.items.forEach((item) => markSessionEdited(item.id));
+  rememberReviewAction(ids, !reviewed, reviewed, response.items);
+  ids.forEach((id) => state.selectedIds.delete(id));
+  await reload();
+  showToast(`${ids.length} ${ids.length === 1 ? "Datensatz wurde" : "Datensätze wurden"} ${reviewed ? "als geprüft markiert" : "wieder geöffnet"}.`);
+}
+
+async function replayHistory(direction) {
+  const sourceStack = direction === "undo" ? state.undoStack : state.redoStack;
+  const targetStack = direction === "undo" ? state.redoStack : state.undoStack;
+  const action = sourceStack.at(-1);
+  if (!action || state.historyBusy) return;
+  state.historyBusy = true;
+  updateHistoryOverlay();
+  try {
+    const reviewed = direction === "undo" ? action.before : action.after;
+    const response = await requestBulkReview(action.ids, reviewed, action.revisions);
+    action.revisions = Object.fromEntries(response.items.map((item) => [item.id, item.revision]));
+    sourceStack.pop();
+    targetStack.push(action);
+    await reload();
+    showToast(direction === "undo" ? "Prüfaktion rückgängig gemacht." : "Prüfaktion wiederholt.");
+  } catch (error) {
+    showToast(error.status === 409 ? "Rückgängig nicht möglich: Mindestens ein Datensatz wurde zwischenzeitlich geändert." : error.message, true);
+    await reload().catch(() => {});
+  } finally {
+    state.historyBusy = false;
+    updateHistoryOverlay();
+  }
 }
 
 function itemQuery() {
@@ -644,6 +725,7 @@ async function togglePCS7Review() {
       body: JSON.stringify({ revision: state.current.revision, pcs7Reviewed: !reviewed }),
     });
     markSessionEdited(updated.id);
+    rememberReviewAction([Number(updated.id)], reviewed, !reviewed, [updated]);
     populateEditor(updated);
     await reload();
     showToast(reviewed ? "Manuelle PCS7-Prüfung zurückgenommen." : "PCS7-Abweichung als manuell geprüft markiert.");
@@ -787,9 +869,9 @@ async function uploadDpl() {
     $("#marker-filter").value = "";
     clearSessionEdited();
     await reload();
-    const backupNote = result.backup_filename
-      ? " Der vorherige SQLite-Teststand wurde gesichert."
-      : result.backend === "mariadb" ? " Der neue Datenstand wurde vollständig in MariaDB aktiviert." : "";
+    const backupNote = result.backend === "mariadb"
+      ? " Der neue Datenstand wurde vollständig und transaktional in MariaDB aktiviert."
+      : "";
     showUploadResult(
       `Import erfolgreich: ${result.selected} markierte Datensätze, davon ${result.provider} für den Provider-Export.${backupNote}`
     );
@@ -893,6 +975,22 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#reset-filters").addEventListener("click", resetFilters);
   $("#show-open-issues").addEventListener("click", focusAttention);
   $("#review-action").addEventListener("click", focusAttention);
+  $("#select-all-visible").addEventListener("change", (event) => {
+    state.items.forEach((item) => {
+      const id = Number(item.id);
+      if (event.target.checked) state.selectedIds.add(id); else state.selectedIds.delete(id);
+    });
+    renderRows(state.rawItems);
+  });
+  $("#bulk-clear").addEventListener("click", () => {
+    state.selectedIds.clear();
+    renderRows(state.rawItems);
+  });
+  $("#bulk-review").addEventListener("click", () => performReview([...state.selectedIds], true).catch((error) => showToast(error.message, true)));
+  $("#bulk-unreview").addEventListener("click", () => performReview([...state.selectedIds], false).catch((error) => showToast(error.message, true)));
+  $("#undo-action").addEventListener("click", () => replayHistory("undo"));
+  $("#redo-action").addEventListener("click", () => replayHistory("redo"));
+  updateHistoryOverlay();
 
   $("#dpl-upload-input").addEventListener("change", (event) => selectUploadFile(event.target.files[0]));
   $("#upload-start").addEventListener("click", uploadDpl);

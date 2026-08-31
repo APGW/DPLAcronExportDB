@@ -4,7 +4,7 @@ import argparse
 import json
 from pathlib import Path
 
-from dpl_export.database import DatabaseConfig, DatabaseTarget, database_from_environment
+from dpl_export.database import DatabaseTarget, database_from_environment
 from dpl_export.exporter import write_exports
 from dpl_export.importer import import_project
 from dpl_export.service import project_summary
@@ -12,7 +12,6 @@ from dpl_export.web_server import serve
 
 
 BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_DATABASE = BASE_DIR / "data" / "dpl.sqlite"
 DEFAULT_DPL = BASE_DIR / "2026-06-12 DPL_PWK Lippestraße; Braukgraben.xlsx"
 DEFAULT_ACRON_TEMPLATE = BASE_DIR / "brauckgraben_neu.csv.xlsx"
 DEFAULT_PROVIDER_TEMPLATE = BASE_DIR / "shhamm_provider1_WINCC60.csv"
@@ -31,11 +30,6 @@ def ensure_database(database: DatabaseTarget) -> None:
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="DPL in Acron- und WINCC60-Provider-Exporte überführen")
-    root.add_argument(
-        "--database",
-        type=Path,
-        help="Optionale SQLite-Datenbank für Entwicklung/Tests; sonst gilt die DPL_DB_*-Konfiguration",
-    )
     root.add_argument("--data-dir", type=Path, help="Verzeichnis für Uploads; sonst DPL_DATA_DIR")
     commands = root.add_subparsers(dest="command")
 
@@ -59,11 +53,7 @@ def parser() -> argparse.ArgumentParser:
 
 def main() -> None:
     arguments = parser().parse_args()
-    database: DatabaseTarget
-    if arguments.database:
-        database = DatabaseConfig.sqlite(arguments.database.resolve())
-    else:
-        database = database_from_environment(DEFAULT_DATABASE)
+    database: DatabaseTarget = database_from_environment()
     command = arguments.command or "serve"
 
     if command == "init":

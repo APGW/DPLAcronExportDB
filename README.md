@@ -5,6 +5,12 @@ einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemei
 Korrektur bereit und erzeugt getrennte Acron- und
 WINCC60-Provider-Exporte.
 
+Die Tabellenansicht unterstützt Einzel- und Mehrfachauswahl. PCS7-Abweichungen
+können direkt in der Zeile oder gesammelt als geprüft markiert werden. Ein
+kompaktes, ständig sichtbares Undo/Redo-Element hält die letzten 30
+Prüfaktionen der aktuellen Browser-Sitzung bereit und schützt dabei über die
+Datensatzversion vor dem Überschreiben paralleler Änderungen.
+
 ## Vorgesehener Betrieb
 
 Die Anwendung läuft ausschließlich im Unternehmensnetz auf Debian 13, bevorzugt
@@ -29,24 +35,19 @@ Enthalten sind weiterhin:
 
 Die schnellste Installation steht in [DEPLOY_DEBIAN13.md](DEPLOY_DEBIAN13.md).
 Für neue Container und CT-Vorlagen siehe [PROXMOX_CT.md](PROXMOX_CT.md).
+Der konkrete Abnahmelauf mit der Tibaum-DPL ist in [TIBAUM_CHECK.md](TIBAUM_CHECK.md) dokumentiert.
 
-## Lokale Entwicklung unter Windows
+## Datenbank
 
-SQLite bleibt als Entwicklungs- und Testdatenbank verfügbar:
-
-```powershell
-python app.py --database data/dpl.sqlite init
-python app.py --database data/dpl.sqlite serve
-```
-
-Danach `http://127.0.0.1:8765` öffnen. Die Oberfläche startet direkt ohne
-Anmeldung.
+Der ausgelieferte Dienst verwendet ausschließlich MariaDB. DPL-Importe werden
+direkt vorverarbeitet und anschließend in einer MariaDB-Transaktion vollständig
+oder gar nicht aktiviert. Es wird keine SQLite-Arbeits- oder Zwischenbank erzeugt.
 
 ## DPL-Import
 
-Die Oberfläche akzeptiert `.xlsx`-Dateien bis 25 MB. Eine Datei wird zuerst in
-einer isolierten SQLite-Prüfdatenbank vollständig validiert. Erst anschließend
-wird der aktive MariaDB-Datenstand innerhalb einer Transaktion ersetzt.
+Die Oberfläche akzeptiert `.xlsx`-Dateien bis 25 MB. Die Datei wird vollständig
+gelesen und validiert, bevor der aktive MariaDB-Datenstand innerhalb einer
+Transaktion ersetzt wird.
 
 - erforderliche Blätter: `Info und Historie AnlagenDPL` und `PWK_Analogwerte`
 - Auswahl: vollflächig gelbe Zeilen und jeder Datensatz mit mindestens einer orange geänderten Zelle
@@ -96,12 +97,12 @@ Rechenwerte bleiben im Acron-Projekt.
 Kommandozeile:
 
 ```powershell
-python app.py --database data/dpl.sqlite export
+python app.py export
 ```
 
 ## Prüfung
 
 ```powershell
 python -m unittest discover -s tests -v
-python app.py --database data/dpl.sqlite validate
+python app.py validate
 ```

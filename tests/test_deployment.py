@@ -43,6 +43,23 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("Als geprüft", application)
         self.assertIn("pcs7Reviewed: !reviewed", application)
         self.assertIn(".row-review-button", styles)
+        self.assertIn("select-all-visible", (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8"))
+        self.assertIn("bulk-review", application)
+        self.assertIn("undo-action", application)
+
+    def test_company_logo_is_shipped(self) -> None:
+        page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
+        self.assertIn("/assets/agw-logo.png", page)
+        self.assertTrue((ROOT / "dpl_export" / "web" / "assets" / "agw-logo.png").is_file())
+
+    def test_deployed_runtime_is_mariadb_only(self) -> None:
+        application = (ROOT / "app.py").read_text(encoding="utf-8")
+        upload = (ROOT / "dpl_export" / "upload.py").read_text(encoding="utf-8")
+        bundle = (ROOT / "deploy" / "build-bundle.ps1").read_text(encoding="utf-8")
+        self.assertNotIn('"--database"', application)
+        self.assertNotIn("incoming_database", upload)
+        self.assertNotIn("import sqlite3", upload)
+        self.assertNotIn('    "tests",', bundle)
 
     def test_systemd_service_uses_local_mariadb_configuration(self) -> None:
         service = (ROOT / "deploy" / "dpl-acron.service").read_text(encoding="utf-8")

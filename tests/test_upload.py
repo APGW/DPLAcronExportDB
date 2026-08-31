@@ -52,7 +52,7 @@ class UploadTest(unittest.TestCase):
         self.assertEqual(55, result["selected"])
         self.assertEqual(45, result["provider"])
         self.assertEqual("Aktuelle DPL.xlsx", result["source_filename"])
-        self.assertTrue((self.test_directory / "backups" / result["backup_filename"]).exists())
+        self.assertIsNone(result["backup_filename"])
         self.assertTrue(Path(result["stored_source"]).exists())
         summary = project_summary(self.database)
         self.assertEqual("Aktuelle DPL.xlsx", summary["latestImport"]["source_filename"])

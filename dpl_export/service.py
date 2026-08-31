@@ -554,6 +554,62 @@ def update_datapoint(
     return get_datapoint(database, datapoint_id)
 
 
+def bulk_review_datapoints(
+    database: DatabaseTarget,
+    entries: list[dict[str, Any]],
+    reviewed: bool,
+) -> list[dict[str, Any]]:
+    if not isinstance(entries, list) or not entries or len(entries) > 500:
+        raise ValueError("Für die Sammelprüfung werden 1 bis 500 Datensätze erwartet.")
+    normalized: list[tuple[int, int]] = []
+    seen: set[int] = set()
+    for entry in entries:
+        try:
+            datapoint_id = int(entry["id"])
+            revision = int(entry["revision"])
+        except (KeyError, TypeError, ValueError) as exc:
+            raise ValueError("Datensatz-ID oder Bearbeitungsversion der Sammelauswahl ist ungültig.") from exc
+        if datapoint_id in seen:
+            continue
+        seen.add(datapoint_id)
+        normalized.append((datapoint_id, revision))
+
+    connection = connect(database)
+    new_value = int(bool(reviewed))
+    try:
+        with transaction(connection):
+            for datapoint_id, revision in normalized:
+                current = connection.execute(
+                    "SELECT pcs7_reviewed FROM datapoints WHERE id = ?",
+                    (datapoint_id,),
+                ).fetchone()
+                if not current:
+                    raise KeyError(datapoint_id)
+                cursor = connection.execute(
+                    """
+                    UPDATE datapoints
+                    SET pcs7_reviewed = ?,
+                        pcs7_reviewed_at = CASE WHEN ? = 1 THEN CURRENT_TIMESTAMP ELSE NULL END,
+                        row_version = row_version + 1,
+                        updated_at = CURRENT_TIMESTAMP
+                    WHERE id = ? AND row_version = ?
+                    """,
+                    (new_value, new_value, datapoint_id, revision),
+                )
+                if cursor.rowcount != 1:
+                    latest = connection.execute(
+                        "SELECT row_version FROM datapoints WHERE id = ?", (datapoint_id,)
+                    ).fetchone()
+                    raise RevisionConflictError(int(latest["row_version"]) if latest else revision)
+                _audit(
+                    connection, datapoint_id, "datapoint", "pcs7Reviewed",
+                    current["pcs7_reviewed"], new_value,
+                )
+    finally:
+        connection.close()
+    return [get_datapoint(database, datapoint_id) for datapoint_id, _revision in normalized]
+
+
 def recent_audit(database: DatabaseTarget, limit: int = 30) -> list[dict[str, Any]]:
     connection = connect(database)
     rows = connection.execute(

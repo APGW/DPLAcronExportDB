@@ -7,7 +7,7 @@ from pathlib import Path
 from dpl_export.database import connect, transaction
 from dpl_export.importer import import_project
 from dpl_export.pcs7 import _parse_sheet, endpoint_candidates
-from dpl_export.service import list_datapoints, project_summary, update_datapoint
+from dpl_export.service import bulk_review_datapoints, list_datapoints, project_summary, update_datapoint
 from dpl_export.xlsx_reader import Cell, Sheet
 
 
@@ -118,6 +118,20 @@ class PCS7ConsistencyTest(unittest.TestCase):
         summary = project_summary(self.database)["pcs7"]
         self.assertEqual(1, summary["reviewed"])
         self.assertEqual(43, summary["mismatches"])
+
+    def test_bulk_review_marks_multiple_records_atomically(self) -> None:
+        records = [
+            row for row in list_datapoints(self.database)
+            if row["pcs7"]["status"] == "mismatch"
+        ][:3]
+        updated = bulk_review_datapoints(
+            self.database,
+            [{"id": row["id"], "revision": row["revision"]} for row in records],
+            True,
+        )
+        self.assertEqual(3, len(updated))
+        self.assertTrue(all(row["pcs7"]["status"] == "reviewed" for row in updated))
+        self.assertEqual(3, project_summary(self.database)["pcs7"]["reviewed"])
 
     def test_marks_edited_acron_reference_as_inconsistent(self) -> None:
         record = next(

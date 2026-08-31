@@ -13,6 +13,7 @@ from .database import DatabaseTarget, database_health
 from .exporter import acron_export, provider_export
 from .service import (
     RevisionConflictError,
+    bulk_review_datapoints,
     get_datapoint,
     list_datapoints,
     project_summary,
@@ -117,7 +118,7 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
 
     def _static(self, path: str) -> None:
         filename = "index.html" if path in {"", "/"} else path.lstrip("/")
-        if filename not in {"index.html", "app.js", "styles.css"}:
+        if filename not in {"index.html", "app.js", "styles.css", "assets/agw-logo.png"}:
             self._error(HTTPStatus.NOT_FOUND, "Datei nicht gefunden.")
             return
         file_path = WEB_ROOT / filename
@@ -206,6 +207,16 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/datapoints/bulk-review":
+                payload = self._read_json()
+                self._send_json({
+                    "items": bulk_review_datapoints(
+                        self.database,
+                        payload.get("items", []),
+                        bool(payload.get("reviewed")),
+                    )
+                })
+                return
             if parsed.path == "/api/import-dpl":
                 filename, content = self._read_upload()
                 result = import_uploaded_dpl(
@@ -230,6 +241,10 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(result, HTTPStatus.CREATED)
                 return
             self._error(HTTPStatus.NOT_FOUND, "Route nicht gefunden.")
+        except RevisionConflictError as exc:
+            self._error(HTTPStatus.CONFLICT, str(exc))
+        except KeyError:
+            self._error(HTTPStatus.NOT_FOUND, "Mindestens ein Datensatz wurde nicht gefunden.")
         except (UnicodeDecodeError, ValueError) as exc:
             self._error(HTTPStatus.BAD_REQUEST, str(exc))
         except Exception:
