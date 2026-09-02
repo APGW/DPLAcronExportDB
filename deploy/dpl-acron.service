@@ -15,8 +15,12 @@ Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 /opt/dpl-acron/app.py --data-dir /var/lib/dpl-acron/data serve --host ${DPL_HOST} --port ${DPL_PORT}
 Restart=on-failure
 RestartSec=3s
+TimeoutStartSec=30s
 TimeoutStopSec=20s
 UMask=0027
+SyslogIdentifier=dpl-acron
+TasksMax=64
+LimitNOFILE=4096
 
 NoNewPrivileges=true
 PrivateDevices=true
@@ -31,6 +35,8 @@ ProtectClock=true
 ProtectHostname=true
 RestrictSUIDSGID=true
 RestrictRealtime=true
+RestrictNamespaces=true
+SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=true
 MemoryDenyWriteExecute=true

@@ -61,6 +61,7 @@ def import_uploaded_dpl(
     provider_template_path: Path,
     *,
     data_directory: Path | None = None,
+    module_code: str | None = None,
 ) -> dict[str, Any]:
     safe_name = validate_xlsx_upload(filename, content)
     database_config = resolve_database(database)
@@ -80,6 +81,8 @@ def import_uploaded_dpl(
             provider_template_path,
             force=True,
             source_filename=safe_name,
+            module_root=data_directory / "modules",
+            module_code=module_code,
         )
         summary = project_summary(database)
     except Exception:

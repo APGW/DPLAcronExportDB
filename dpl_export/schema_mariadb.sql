@@ -1,6 +1,8 @@
 CREATE TABLE IF NOT EXISTS projects (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(100) NOT NULL UNIQUE,
+    module_code VARCHAR(32) NOT NULL DEFAULT 'pwk',
+    module_version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
     name VARCHAR(255) NOT NULL,
     ba_number VARCHAR(100) NOT NULL,
     acron_prefix VARCHAR(255) NOT NULL,
@@ -21,6 +23,7 @@ CREATE TABLE IF NOT EXISTS imports (
     source_filename VARCHAR(255) NOT NULL,
     source_sha256 CHAR(64) NOT NULL,
     selected_rows INT UNSIGNED NOT NULL,
+    module_config_json LONGTEXT NOT NULL,
     imported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uq_import_project_sha (project_id, source_sha256),
     CONSTRAINT fk_import_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE

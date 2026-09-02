@@ -140,6 +140,12 @@ def _sqlite_columns(connection: DatabaseConnection, table: str) -> set[str]:
 
 
 def _sqlite_migrations(connection: DatabaseConnection) -> None:
+    if "module_code" not in _sqlite_columns(connection, "projects"):
+        connection.execute("ALTER TABLE projects ADD COLUMN module_code TEXT NOT NULL DEFAULT 'pwk'")
+    if "module_version" not in _sqlite_columns(connection, "projects"):
+        connection.execute("ALTER TABLE projects ADD COLUMN module_version TEXT NOT NULL DEFAULT '1.0.0'")
+    if "module_config_json" not in _sqlite_columns(connection, "imports"):
+        connection.execute("ALTER TABLE imports ADD COLUMN module_config_json TEXT NOT NULL DEFAULT '{}'")
     if "has_orange_changes" not in _sqlite_columns(connection, "datapoints"):
         connection.execute(
             "ALTER TABLE datapoints ADD COLUMN has_orange_changes INTEGER NOT NULL DEFAULT 0"
@@ -187,6 +193,18 @@ def _sqlite_migrations(connection: DatabaseConnection) -> None:
 
 
 def _mariadb_migrations(connection: DatabaseConnection) -> None:
+    connection.execute(
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
+        "module_code VARCHAR(32) NOT NULL DEFAULT 'pwk'"
+    )
+    connection.execute(
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
+        "module_version VARCHAR(50) NOT NULL DEFAULT '1.0.0'"
+    )
+    connection.execute(
+        "ALTER TABLE imports ADD COLUMN IF NOT EXISTS module_config_json LONGTEXT NULL"
+    )
+    connection.execute("UPDATE imports SET module_config_json = '{}' WHERE module_config_json IS NULL")
     connection.execute(
         "ALTER TABLE datapoints ADD COLUMN IF NOT EXISTS "
         "has_orange_changes TINYINT(1) NOT NULL DEFAULT 0"
@@ -247,10 +265,16 @@ def database_backend(target: DatabaseTarget) -> str:
 def database_health(target: DatabaseTarget) -> dict[str, str]:
     connection = connect(target)
     try:
-        row = connection.execute("SELECT 1 AS healthy").fetchone()
-        if not row or int(row["healthy"]) != 1:
+        healthy = connection.execute("SELECT 1 AS healthy").fetchone()
+        if not healthy or int(healthy["healthy"]) != 1:
             raise RuntimeError("Datenbankprüfung fehlgeschlagen.")
-        return {"status": "ok", "backend": connection.backend}
+        project = connection.execute(
+            "SELECT name FROM projects WHERE code = ?",
+            ("braukgraben",),
+        ).fetchone()
+        if not project:
+            raise RuntimeError("Kein aktives Projekt in der Datenbank.")
+        return {"status": "ok", "backend": connection.backend, "project": str(project["name"])}
     finally:
         connection.close()
 

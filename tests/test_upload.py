@@ -7,14 +7,13 @@ import unittest
 import urllib.error
 import urllib.request
 import uuid
-from http.server import ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import quote
 
 from dpl_export.importer import import_project
 from dpl_export.service import list_datapoints, project_summary, update_datapoint
 from dpl_export.upload import import_uploaded_dpl, validate_xlsx_upload
-from dpl_export.web_server import DPLRequestHandler
+from dpl_export.web_server import DPLHTTPServer, DPLRequestHandler
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -93,6 +92,18 @@ class UploadTest(unittest.TestCase):
             )
         self.assertEqual(55, project_summary(self.database)["counts"]["total"])
 
+    def test_selected_module_must_match_the_uploaded_dpl(self) -> None:
+        with self.assertRaisesRegex(ValueError, "entspricht jedoch"):
+            import_uploaded_dpl(
+                self.database,
+                "falsch-zugeordnet.xlsx",
+                DPL.read_bytes(),
+                ACRON_TEMPLATE,
+                PROVIDER_TEMPLATE,
+                module_code="rue",
+            )
+        self.assertEqual(55, project_summary(self.database)["counts"]["total"])
+
 
 class UploadEndpointTest(unittest.TestCase):
     def setUp(self) -> None:
@@ -108,7 +119,7 @@ class UploadEndpointTest(unittest.TestCase):
                 "data_directory": self.test_directory,
             },
         )
-        self.server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+        self.server = DPLHTTPServer(("127.0.0.1", 0), handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
@@ -127,6 +138,7 @@ class UploadEndpointTest(unittest.TestCase):
             headers={
                 "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 "X-Filename": quote("Neue Anlagen-DPL.xlsx"),
+                "X-Anlage-Module": "pwk",
             },
         )
         with urllib.request.urlopen(request, timeout=20) as response:
@@ -147,6 +159,32 @@ class UploadEndpointTest(unittest.TestCase):
             payload = json.load(response)
         self.assertEqual("ok", payload["status"])
         self.assertEqual("sqlite", payload["backend"])
+        self.assertEqual("PWK Lippestraße; Braukgraben", payload["project"])
+        self.assertEqual("3.1.1", payload["version"])
+
+    def test_module_api_only_lists_internal_supported_types(self) -> None:
+        with urllib.request.urlopen(f"{self.base_url}/api/modules", timeout=10) as response:
+            payload = json.load(response)
+        self.assertEqual(["pwk", "rue", "rueb"], [item["code"] for item in payload["items"]])
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(f"{self.base_url}/api/modules/rue/export", timeout=10)
+        self.assertEqual(404, error.exception.code)
+        error.exception.close()
+
+    def test_endpoint_requires_an_explicit_module_selection(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/import-dpl",
+            data=DPL.read_bytes(),
+            method="POST",
+            headers={
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "X-Filename": quote("Ohne Auswahl.xlsx"),
+            },
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=10)
+        self.assertEqual(400, error.exception.code)
+        error.exception.close()
 
     def test_endpoint_rejects_invalid_file_without_replacement(self) -> None:
         request = urllib.request.Request(
@@ -156,6 +194,7 @@ class UploadEndpointTest(unittest.TestCase):
             headers={
                 "Content-Type": "application/octet-stream",
                 "X-Filename": quote("defekt.xlsx"),
+                "X-Anlage-Module": "pwk",
             },
         )
         with self.assertRaises(urllib.error.HTTPError) as error:

@@ -33,24 +33,44 @@
           <h1 id="upload-title">DPL hochladen und automatisch aufbereiten</h1>
           <p>Wählen Sie eine DPL im XLSX-Format. Das Programm übernimmt gelb markierte Datensätze sowie jeden Datensatz mit mindestens einer orange geänderten Zelle.</p>
           <ul class="upload-rules">
-            <li>Erwartetes Tabellenblatt: <strong>PWK_Analogwerte</strong></li>
+            <li>Anlagentyp auswählen: <strong>PWK, RÜ oder RÜB</strong></li>
             <li>Maximale Dateigröße: <strong>25 MB</strong></li>
             <li>Die Übernahme erfolgt <strong>vollständig oder gar nicht</strong></li>
           </ul>
         </div>
         <div class="upload-control">
-          <input class="sr-only" id="dpl-upload-input" type="file" accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
-          <label class="drop-zone" id="dpl-drop-zone" for="dpl-upload-input" tabindex="0">
-            <span class="upload-file-icon" aria-hidden="true">XLSX</span>
-            <strong>DPL-Datei auswählen</strong>
-            <span>Datei hier ablegen oder anklicken</span>
+          <label class="module-select-field" for="dpl-module-select">
+            <span>1. Anlagentyp auswählen</span>
+            <select id="dpl-module-select" aria-describedby="dpl-module-help">
+              <option value="">Anlagentypen werden geladen …</option>
+            </select>
+            <small id="dpl-module-help">Die DPL wird vor der Übernahme gegen den ausgewählten Anlagentyp geprüft.</small>
           </label>
+          <input class="sr-only" id="dpl-upload-input" type="file" accept=".xlsx" multiple>
+          <label class="drop-zone" id="dpl-drop-zone" for="dpl-upload-input" tabindex="0">
+            <span class="drop-zone-badge">Einzeln oder Batch</span>
+            <span class="upload-file-icon" aria-hidden="true">XLSX</span>
+            <strong>2. DPL-Dateien auswählen</strong>
+            <span>Eine oder mehrere Dateien hier ablegen, mit Strg+V einfügen oder anklicken</span>
+          </label>
+          <p class="upload-alternative"><strong>Dateidialog hängt?</strong> XLSX-Datei im Explorer einmal kopieren und anschließend hier <kbd>Strg</kbd>+<kbd>V</kbd> drücken.</p>
           <div class="upload-selection" id="upload-selection" hidden>
-            <div>
-              <strong id="upload-filename">–</strong>
-              <span id="upload-filesize">–</span>
+            <div class="upload-queue-heading">
+              <div class="upload-queue-summary">
+                <span class="upload-queue-kicker">Für den nächsten Import ausgewählt</span>
+                <strong id="upload-filename">–</strong>
+                <span id="upload-filesize">–</span>
+              </div>
+              <span class="upload-count-badge" id="upload-count-badge">0 Dateien</span>
             </div>
-            <button class="button button-primary" id="upload-start" type="button">DPL prüfen und übernehmen</button>
+            <div class="upload-file-list" id="upload-file-list" aria-label="Abgelegte DPL-Dateien"></div>
+            <div class="upload-queue-actions">
+              <small>Bei mehreren DPLs wählen Sie den nächsten Import aus. Der aktive Projektdatenstand wird jeweils vollständig ersetzt.</small>
+              <button class="button button-primary upload-start-button" id="upload-start" type="button">
+                <span>DPL prüfen und übernehmen</span>
+                <small id="upload-start-filename">–</small>
+              </button>
+            </div>
           </div>
           <div class="upload-progress" id="upload-progress" hidden role="status" aria-live="polite">
             <span class="spinner" aria-hidden="true"></span>
@@ -102,6 +122,7 @@
           <p class="eyebrow">Aktives Projekt</p>
           <h2 id="project-name">Projekt wird geladen …</h2>
           <p id="project-meta" class="muted">Die Projektdaten werden vorbereitet.</p>
+          <p><span class="module-chip" id="project-module">Anlagenmodul wird erkannt …</span></p>
         </div>
         <a class="quiet-link" href="#quick-help">Wie funktioniert das?</a>
       </section>
@@ -443,8 +464,8 @@
     <div id="toast" role="status" aria-live="polite"></div>
     <aside class="history-overlay" aria-label="Änderungen rückgängig machen oder wiederholen">
       <span id="history-label">Keine Änderung</span>
-      <button id="undo-action" type="button" disabled aria-label="Letzte Änderung rückgängig machen" title="Rückgängig">↶</button>
-      <button id="redo-action" type="button" disabled aria-label="Änderung wiederholen" title="Wiederholen">↷</button>
+      <button id="undo-action" type="button" disabled aria-label="Letzte Änderung rückgängig machen" title="Rückgängig (Strg+Z)">↶</button>
+      <button id="redo-action" type="button" disabled aria-label="Änderung wiederholen" title="Wiederholen (Strg+Y)">↷</button>
     </aside>
     <script src="/app.js" defer></script>
   </body>

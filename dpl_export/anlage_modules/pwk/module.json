@@ -1,0 +1,29 @@
+{
+  "schema": "dpl-acron.module/v1",
+  "code": "pwk",
+  "name": "PWK – Pumpwerk",
+  "version": "1.0.0",
+  "description": "Datenpunktlisten für Pumpwerke",
+  "dpl": {
+    "metadata_sheet": "Info und Historie AnlagenDPL",
+    "sheet_names": ["PWK_Analogwerte"],
+    "header_row": 3,
+    "first_data_row": 5,
+    "marker_columns": [0, 57],
+    "metadata": {"project_name": [3, 2], "ba_number": [5, 2], "acron_prefix": [6, 2]},
+    "columns": {
+      "folder_level1": 0, "folder_level2": 1, "number": 2, "class_name": 3,
+      "long_name": 4, "vg_short": [8, 5], "pcs7_variable": 29, "unit": 10,
+      "decimals": 11, "archive": 31, "cycle_seconds": 32, "delta1": 34,
+      "value_type": 40, "pval_handling": 41, "interval_comp": 42,
+      "period_comp": 43, "data_type": 44, "range_min": 48, "range_max": 49,
+      "acron_long": 38, "acron_short": 39, "comment": 50
+    }
+  },
+  "automatic_formulas": [
+    {"target_contains": ["fördermenge"], "target_any": ["aller maschinen", "fördersystem"], "source_regex": "_M(\\d+)_.*BER_VOL$", "sort": "capture_int"},
+    {"target_contains": ["förderleistung"], "target_any": ["aller maschinen", "fördersystem"], "source_regex": "_M(\\d+)_.*BER_QIST$", "sort": "capture_int"},
+    {"target_contains": ["stromverbrauch"], "source_regex": "_WEL_(?:HT|NT)_HAND$", "sort": "identification"}
+  ]
+}
+

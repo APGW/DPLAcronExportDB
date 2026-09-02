@@ -25,7 +25,9 @@ const state = {
   current: null,
   initialPayload: null,
   uploadFile: null,
+  uploadFiles: [],
   pcs7Files: [],
+  modules: [],
   searchTimer: null,
   saving: false,
   editedIds: loadSessionEditedIds(),
@@ -139,6 +141,7 @@ function renderSummary(summary) {
   const readiness = $("#export-readiness");
 
   text("#project-name", project.name);
+  text("#project-module", `${String(project.module_code || "pwk").toUpperCase()} · Modulversion ${project.module_version || "1.0.0"}`);
   const sourceName = summary.latestImport?.source_filename || "DPL";
   text("#project-meta", `Bauabschnitt ${project.ba_number} · ${counts.total} markierte Datensätze · Quelle: ${sourceName}`);
   text("#stat-total", counts.total);
@@ -358,12 +361,19 @@ function renderRows(items) {
     row.querySelector(".row-enabled").addEventListener("change", async (event) => {
       try {
         event.target.disabled = true;
+        const before = state.rawItems.find((item) => Number(item.id) === Number(row.dataset.id));
         const updated = await fetchJson(`/api/datapoints/${row.dataset.id}`, {
           method: "PATCH",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ enabled: event.target.checked, revision: Number(row.dataset.revision) }),
         });
         markSessionEdited(updated.id);
+        if (before) rememberDatapointAction(
+          before,
+          updated,
+          event.target.checked ? "Datensatz aktiviert" : "Datensatz deaktiviert",
+          "enabled",
+        );
         showToast(event.target.checked ? "Datensatz für Acron aktiviert." : "Datensatz vom Acron-Export ausgeschlossen.");
         await reload();
       } catch (error) {
@@ -389,10 +399,61 @@ function updateBulkToolbar() {
 }
 
 function updateHistoryOverlay() {
-  $("#undo-action").disabled = state.historyBusy || !state.undoStack.length;
-  $("#redo-action").disabled = state.historyBusy || !state.redoStack.length;
+  const editorOpen = Boolean($("#editor-dialog")?.open);
+  $("#undo-action").disabled = state.historyBusy || editorOpen || !state.undoStack.length;
+  $("#redo-action").disabled = state.historyBusy || editorOpen || !state.redoStack.length;
   const latest = state.undoStack.at(-1);
   text("#history-label", latest ? latest.label : "Keine Änderung");
+}
+
+function recordPayload(record) {
+  return {
+    enabled: Boolean(record.enabled),
+    acron: {
+      identification: record.acron_identification,
+      name: record.acron_name,
+      group: record.acron_group,
+      type: Number(record.acron_type),
+      formatOut: Number(record.acron_format_out),
+      formula: record.acron_formula,
+      pvalFrom: record.acron_pval_from,
+      pvalTo: record.acron_pval_to,
+      unit: record.acron_unit,
+      decimals: Number(record.acron_decimals),
+      pvalHandling: Number(record.acron_pval_handling),
+      cycleSeconds: record.acron_cycle_seconds,
+      intervalCompMode: record.acron_interval_comp_mode,
+      dailyCompMode: record.acron_daily_comp_mode,
+      monthlyCompMode: record.acron_monthly_comp_mode,
+      yearlyCompMode: record.acron_yearly_comp_mode,
+      comment: record.acron_comment,
+    },
+    provider: {
+      include: Boolean(record.provider_include_export),
+      varName: record.provider_var_name,
+      description: record.provider_description,
+      group: record.provider_group,
+      dbpType: Number(record.provider_dbp_type),
+      cycleInterval: record.provider_cycle_interval,
+      delta1Active: Boolean(record.provider_delta1_active),
+      delta1Change: record.provider_delta1_change,
+      comment: record.provider_comment,
+    },
+  };
+}
+
+function rememberDatapointAction(before, after, label = "Datensatz bearbeitet", scope = "full") {
+  state.undoStack.push({
+    kind: "datapoint",
+    id: Number(after.id),
+    before: scope === "enabled" ? { enabled: Boolean(before.enabled) } : recordPayload(before),
+    after: scope === "enabled" ? { enabled: Boolean(after.enabled) } : recordPayload(after),
+    revision: Number(after.revision),
+    label,
+  });
+  if (state.undoStack.length > 30) state.undoStack.shift();
+  state.redoStack = [];
+  updateHistoryOverlay();
 }
 
 function rememberReviewAction(ids, before, after, items) {
@@ -441,13 +502,25 @@ async function replayHistory(direction) {
   state.historyBusy = true;
   updateHistoryOverlay();
   try {
-    const reviewed = direction === "undo" ? action.before : action.after;
-    const response = await requestBulkReview(action.ids, reviewed, action.revisions);
-    action.revisions = Object.fromEntries(response.items.map((item) => [item.id, item.revision]));
+    if (action.kind === "review") {
+      const reviewed = direction === "undo" ? action.before : action.after;
+      const response = await requestBulkReview(action.ids, reviewed, action.revisions);
+      action.revisions = Object.fromEntries(response.items.map((item) => [item.id, item.revision]));
+      response.items.forEach((item) => markSessionEdited(item.id));
+    } else {
+      const payload = direction === "undo" ? action.before : action.after;
+      const updated = await fetchJson(`/api/datapoints/${action.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...payload, revision: action.revision }),
+      });
+      action.revision = Number(updated.revision);
+      markSessionEdited(updated.id);
+    }
     sourceStack.pop();
     targetStack.push(action);
     await reload();
-    showToast(direction === "undo" ? "Prüfaktion rückgängig gemacht." : "Prüfaktion wiederholt.");
+    showToast(direction === "undo" ? "Letzte Änderung rückgängig gemacht." : "Änderung wiederhergestellt.");
   } catch (error) {
     showToast(error.status === 409 ? "Rückgängig nicht möglich: Mindestens ein Datensatz wurde zwischenzeitlich geändert." : error.message, true);
     await reload().catch(() => {});
@@ -455,6 +528,24 @@ async function replayHistory(direction) {
     state.historyBusy = false;
     updateHistoryOverlay();
   }
+}
+
+function isNativeUndoTarget(target) {
+  return target instanceof Element && Boolean(target.closest(
+    "input:not([type='checkbox']):not([type='radio']), textarea, select, [contenteditable='true']"
+  ));
+}
+
+function handleHistoryShortcut(event) {
+  if (!event.ctrlKey || event.altKey || event.metaKey || isNativeUndoTarget(event.target)) return;
+  const key = event.key.toLocaleLowerCase("de");
+  const direction = key === "z" && !event.shiftKey ? "undo"
+    : (key === "y" || (key === "z" && event.shiftKey)) ? "redo" : null;
+  if (!direction) return;
+  const available = direction === "undo" ? state.undoStack.length : state.redoStack.length;
+  if (!available || state.historyBusy || $("#editor-dialog").open) return;
+  event.preventDefault();
+  replayHistory(direction);
 }
 
 function itemQuery() {
@@ -470,15 +561,28 @@ async function loadItems() {
   renderRows(payload.items);
 }
 
+function renderModules(modules) {
+  state.modules = modules;
+  const select = $("#dpl-module-select");
+  const preferred = select.value || state.summary?.project?.module_code || modules[0]?.code || "";
+  select.innerHTML = modules.map((item) =>
+    `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)} (${escapeHtml(item.code.toUpperCase())})</option>`
+  ).join("");
+  if (modules.some((item) => item.code === preferred)) select.value = preferred;
+  select.disabled = modules.length === 0;
+}
+
 async function reload() {
-  const [summary, payload, audit] = await Promise.all([
+  const [summary, payload, audit, modules] = await Promise.all([
     fetchJson("/api/project"),
     fetchJson(`/api/datapoints?${itemQuery()}`),
     fetchJson("/api/audit?limit=12"),
+    fetchJson("/api/modules"),
   ]);
   renderSummary(summary);
   renderRows(payload.items);
   renderAudit(audit.items);
+  renderModules(modules.items || []);
 }
 
 const aggregationOptions = [
@@ -629,6 +733,7 @@ function populateEditor(item) {
 
   state.initialPayload = JSON.stringify(editorPayload());
   updateDirtyState();
+  updateHistoryOverlay();
 }
 
 async function openEditor(id) {
@@ -636,6 +741,7 @@ async function openEditor(id) {
     const item = await fetchJson(`/api/datapoints/${id}`);
     populateEditor(item);
     $("#editor-dialog").showModal();
+    updateHistoryOverlay();
     const firstIssue = (item.issues || []).find((issue) => issueFields[issue.code] && ["error", "warning"].includes(issue.level));
     if (firstIssue) {
       window.requestAnimationFrame(() => {
@@ -742,6 +848,7 @@ function closeEditor() {
   state.current = null;
   state.initialPayload = null;
   $("#editor-dialog").close();
+  updateHistoryOverlay();
 }
 
 async function saveEditor(event) {
@@ -752,12 +859,14 @@ async function saveEditor(event) {
   button.textContent = "Wird gespeichert …";
 
   try {
+    const before = state.current;
     const updated = await fetchJson(`/api/datapoints/${state.current.id}`, {
       method: "PATCH",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(editorPayload()),
     });
     markSessionEdited(updated.id);
+    rememberDatapointAction(before, updated, `„${updated.source_long_name}“ bearbeitet`);
     const stillOpen = (updated.issues || []).some((issue) => ["error", "warning"].includes(issue.level));
     if (stillOpen) {
       populateEditor(updated);
@@ -767,6 +876,7 @@ async function saveEditor(event) {
       state.initialPayload = JSON.stringify(editorPayload());
       state.current = null;
       $("#editor-dialog").close();
+      updateHistoryOverlay();
       showToast("Gespeichert und geprüft.");
       await reload();
     }
@@ -817,32 +927,97 @@ function showUploadResult(message, isError = false) {
   result.textContent = message;
 }
 
-function selectUploadFile(file) {
+function uploadFileKey(file) {
+  return `${file.name}\u0000${file.size}\u0000${file.lastModified || 0}`;
+}
+
+function renderUploadQueue() {
+  const container = $("#upload-selection");
+  const list = $("#upload-file-list");
+  if (!state.uploadFiles.length) {
+    state.uploadFile = null;
+    container.hidden = true;
+    list.innerHTML = "";
+    return;
+  }
+  if (!state.uploadFiles.includes(state.uploadFile)) state.uploadFile = state.uploadFiles[0];
+  text("#upload-filename", state.uploadFile.name);
+  text("#upload-filesize", `${formatFileSize(state.uploadFile.size)} · XLSX · bereit zur Prüfung`);
+  text("#upload-count-badge", `${state.uploadFiles.length} ${state.uploadFiles.length === 1 ? "Datei" : "Dateien"}`);
+  text("#upload-start-filename", state.uploadFile.name);
+  list.innerHTML = state.uploadFiles.map((file, index) => `
+    <div class="upload-file-row${file === state.uploadFile ? " is-selected" : ""}" ${file === state.uploadFile ? 'aria-current="true"' : ""}>
+      <label>
+        <input type="radio" name="active-upload-file" value="${index}" ${file === state.uploadFile ? "checked" : ""}>
+        <span class="upload-file-order" aria-hidden="true">${index + 1}</span>
+        <span class="upload-file-copy"><strong>${escapeHtml(file.name)}</strong><small>${formatFileSize(file.size)} · XLSX-Datei</small></span>
+        <span class="upload-file-state">${file === state.uploadFile ? "Ausgewählt" : "Auswählen"}</span>
+      </label>
+      <button type="button" data-remove-upload="${index}" aria-label="${escapeHtml(file.name)} aus der Liste entfernen" title="Aus Liste entfernen">×</button>
+    </div>`).join("");
+  list.querySelectorAll('input[name="active-upload-file"]').forEach((radio) => {
+    radio.addEventListener("change", () => {
+      state.uploadFile = state.uploadFiles[Number(radio.value)];
+      renderUploadQueue();
+    });
+  });
+  list.querySelectorAll("[data-remove-upload]").forEach((button) => {
+    button.addEventListener("click", () => {
+      const removed = state.uploadFiles.splice(Number(button.dataset.removeUpload), 1)[0];
+      if (removed === state.uploadFile) state.uploadFile = state.uploadFiles[0] || null;
+      renderUploadQueue();
+    });
+  });
+  container.hidden = false;
+}
+
+function selectUploadFiles(fileList) {
   $("#upload-result").hidden = true;
-  if (!file) return;
-  if (!file.name.toLocaleLowerCase("de").endsWith(".xlsx")) {
-    state.uploadFile = null;
-    $("#upload-selection").hidden = true;
-    showUploadResult("Bitte wählen Sie eine DPL-Datei mit der Endung .xlsx aus.", true);
-    return;
+  const files = [...(fileList || [])];
+  if (!files.length) return;
+  const valid = files.filter((file) => file.name.toLocaleLowerCase("de").endsWith(".xlsx") && file.size <= 25 * 1024 * 1024);
+  const known = new Set(state.uploadFiles.map(uploadFileKey));
+  const additions = valid.filter((file) => {
+    const key = uploadFileKey(file);
+    if (known.has(key)) return false;
+    known.add(key);
+    return true;
+  });
+  state.uploadFiles.push(...additions);
+  if (!state.uploadFile && additions.length) state.uploadFile = additions[0];
+  renderUploadQueue();
+  const rejected = files.length - valid.length;
+  if (rejected) {
+    showUploadResult(`${rejected} Datei(en) wurden übersprungen. Zulässig sind ausschließlich XLSX-Dateien bis 25 MB.`, true);
+  } else if (!additions.length) {
+    showUploadResult("Diese Datei(en) befinden sich bereits in der Upload-Liste.", true);
   }
-  if (file.size > 25 * 1024 * 1024) {
-    state.uploadFile = null;
-    $("#upload-selection").hidden = true;
-    showUploadResult("Die ausgewählte Datei ist größer als 25 MB.", true);
-    return;
+}
+
+function pasteUploadFile(event) {
+  const files = [...(event.clipboardData?.files || [])];
+  if (!files.length) return;
+  event.preventDefault();
+  const before = state.uploadFiles.length;
+  selectUploadFiles(files);
+  const added = state.uploadFiles.length - before;
+  if (added) {
+    showToast(`${added} DPL-Datei(en) wurden aus der Zwischenablage übernommen.`);
+    $("#upload-selection").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
-  state.uploadFile = file;
-  text("#upload-filename", file.name);
-  text("#upload-filesize", `${formatFileSize(file.size)} · bereit zur Prüfung`);
-  $("#upload-selection").hidden = false;
 }
 
 async function uploadDpl() {
   const file = state.uploadFile;
   if (!file) return;
+  const moduleCode = $("#dpl-module-select").value;
+  const selectedModule = state.modules.find((item) => item.code === moduleCode);
+  if (!selectedModule) {
+    showUploadResult("Bitte wählen Sie zuerst einen Anlagentyp aus.", true);
+    return;
+  }
   const confirmed = window.confirm(
-    `„${file.name}“ als neue aktive DPL übernehmen?\n\nDie Übernahme erfolgt transaktional. Geöffnete ältere Datensätze müssen danach neu geladen werden.`
+    `„${file.name}“ als ${selectedModule.name}-DPL übernehmen?\n\nDie Übernahme erfolgt transaktional. Geöffnete ältere Datensätze müssen danach neu geladen werden.`
   );
   if (!confirmed) return;
 
@@ -858,10 +1033,12 @@ async function uploadDpl() {
       headers: {
         "Content-Type": file.type || "application/octet-stream",
         "X-Filename": encodeURIComponent(file.name),
+        "X-Anlage-Module": moduleCode,
       },
       body: file,
     });
-    state.uploadFile = null;
+    state.uploadFiles = state.uploadFiles.filter((item) => item !== file);
+    state.uploadFile = state.uploadFiles[0] || null;
     $("#dpl-upload-input").value = "";
     $("#search").value = "";
     $("#status-filter").value = "";
@@ -869,11 +1046,12 @@ async function uploadDpl() {
     $("#marker-filter").value = "";
     clearSessionEdited();
     await reload();
+    renderUploadQueue();
     const backupNote = result.backend === "mariadb"
       ? " Der neue Datenstand wurde vollständig und transaktional in MariaDB aktiviert."
       : "";
     showUploadResult(
-      `Import erfolgreich: ${result.selected} markierte Datensätze, davon ${result.provider} für den Provider-Export.${backupNote}`
+      `Import erfolgreich (${result.module_name || selectedModule.name}): ${result.selected} markierte Datensätze, davon ${result.provider} für den Provider-Export.${backupNote}`
     );
     $("#project-name").scrollIntoView({ behavior: "smooth", block: "center" });
   } catch (error) {
@@ -990,9 +1168,11 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("#bulk-unreview").addEventListener("click", () => performReview([...state.selectedIds], false).catch((error) => showToast(error.message, true)));
   $("#undo-action").addEventListener("click", () => replayHistory("undo"));
   $("#redo-action").addEventListener("click", () => replayHistory("redo"));
+  document.addEventListener("keydown", handleHistoryShortcut);
   updateHistoryOverlay();
 
-  $("#dpl-upload-input").addEventListener("change", (event) => selectUploadFile(event.target.files[0]));
+  $("#dpl-upload-input").addEventListener("change", (event) => selectUploadFiles(event.target.files));
+  document.addEventListener("paste", pasteUploadFile);
   $("#upload-start").addEventListener("click", uploadDpl);
   $("#dpl-drop-zone").addEventListener("keydown", (event) => {
     if (event.key === "Enter" || event.key === " ") {
@@ -1014,7 +1194,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     });
   });
   $("#dpl-drop-zone").addEventListener("drop", (event) => {
-    selectUploadFile(event.dataTransfer.files[0]);
+    selectUploadFiles(event.dataTransfer.files);
   });
 
   $("#pcs7-upload-input").addEventListener("change", (event) => selectPCS7Files(event.target.files));

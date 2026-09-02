@@ -1,15 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 import mimetypes
-import os
-import traceback
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
 
 from .database import DatabaseTarget, database_health
+from . import __version__
 from .exporter import acron_export, provider_export
 from .service import (
     RevisionConflictError,
@@ -22,22 +22,45 @@ from .service import (
 )
 from .upload import MAX_UPLOAD_BYTES, import_uploaded_dpl
 from .pcs7 import import_pcs7_export
+from .modules import list_modules
+from .runtime import (
+    BUNDLED_PATHS,
+    DEFAULT_REQUEST_TIMEOUT_SECONDS,
+    RuntimePaths,
+    data_directory as resolve_data_directory,
+    request_timeout_seconds,
+)
 
 
 WEB_ROOT = Path(__file__).with_name("web")
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-ACRON_TEMPLATE = PROJECT_ROOT / "brauckgraben_neu.csv.xlsx"
-PROVIDER_TEMPLATE = PROJECT_ROOT / "shhamm_provider1_WINCC60.csv"
 MAX_REQUEST_BYTES = 512 * 1024
+LOGGER = logging.getLogger("dpl_acron.http")
+
+
+class DPLHTTPServer(ThreadingHTTPServer):
+    """Thread-per-request server with bounded shutdown behavior for systemd."""
+
+    allow_reuse_address = True
+    daemon_threads = True
+    block_on_close = False
+    request_queue_size = 64
 
 
 class DPLRequestHandler(BaseHTTPRequestHandler):
     database: DatabaseTarget
     data_directory: Path
-    server_version = "DPLAcron/2.0"
+    acron_template = BUNDLED_PATHS.acron_template
+    provider_template = BUNDLED_PATHS.provider_template
+    request_timeout = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    server_version = f"DPLAcron/{__version__}"
+    sys_version = ""
+
+    def setup(self) -> None:
+        super().setup()
+        self.connection.settimeout(self.request_timeout)
 
     def log_message(self, format: str, *args) -> None:
-        print(f"[{self.log_date_time_string()}] {format % args}")
+        LOGGER.info("%s - %s", self.address_string(), format % args)
 
     def _headers(self, content_type: str, length: int, status: int = 200, **extra: str) -> None:
         self.send_response(status)
@@ -100,7 +123,7 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
             "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         }
         if content_type not in allowed_types:
-            raise ValueError("Für den DPL-Upload ist eine XLSX-Datei erforderlich.")
+            raise ValueError("Der Dateityp wird für diesen Upload nicht unterstützt.")
         return filename, self.rfile.read(length)
 
     def _discard_request_body(self) -> None:
@@ -130,14 +153,16 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
         self.wfile.write(content)
 
     def _unexpected(self, context: str) -> None:
-        traceback.print_exc()
+        LOGGER.exception(context)
         self._error(HTTPStatus.INTERNAL_SERVER_ERROR, context)
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
         try:
             if parsed.path == "/api/health":
-                self._send_json(database_health(self.database))
+                health = database_health(self.database)
+                health["version"] = __version__
+                self._send_json(health)
                 return
             if not parsed.path.startswith("/api/"):
                 self._static(parsed.path)
@@ -145,6 +170,11 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
 
             if parsed.path == "/api/project":
                 self._send_json(project_summary(self.database))
+                return
+            if parsed.path == "/api/modules":
+                self._send_json({"items": [
+                    module.public_dict() for module in list_modules(self.data_directory / "modules")
+                ]})
                 return
             if parsed.path == "/api/datapoints":
                 query = parse_qs(parsed.query)
@@ -219,13 +249,17 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                 return
             if parsed.path == "/api/import-dpl":
                 filename, content = self._read_upload()
+                module_code = self.headers.get("X-Anlage-Module", "").strip().casefold()
+                if not module_code:
+                    raise ValueError("Bitte vor dem Upload einen Anlagentyp auswählen.")
                 result = import_uploaded_dpl(
                     self.database,
                     filename,
                     content,
-                    ACRON_TEMPLATE,
-                    PROVIDER_TEMPLATE,
+                    self.acron_template,
+                    self.provider_template,
                     data_directory=self.data_directory,
+                    module_code=module_code,
                 )
                 self._send_json(result, HTTPStatus.CREATED)
                 return
@@ -257,21 +291,25 @@ def serve(
     port: int = 8765,
     *,
     data_directory: Path | None = None,
+    runtime_paths: RuntimePaths = BUNDLED_PATHS,
 ) -> None:
-    if data_directory is None:
-        data_directory = Path(os.environ.get("DPL_DATA_DIR", PROJECT_ROOT / "data"))
-    data_directory.mkdir(parents=True, exist_ok=True)
+    runtime_paths.require_templates()
+    active_data_directory = data_directory if data_directory is not None else resolve_data_directory()
+    active_data_directory = active_data_directory.resolve()
+    active_data_directory.mkdir(parents=True, exist_ok=True)
     handler = type(
         "ConfiguredDPLRequestHandler",
         (DPLRequestHandler,),
         {
             "database": database,
-            "data_directory": data_directory,
+            "data_directory": active_data_directory,
+            "acron_template": runtime_paths.acron_template,
+            "provider_template": runtime_paths.provider_template,
+            "request_timeout": request_timeout_seconds(),
         },
     )
-    server = ThreadingHTTPServer((host, port), handler)
-    print(f"DPL Acron Export läuft auf http://{host}:{port}")
-    print("Beenden mit Strg+C")
+    server = DPLHTTPServer((host, port), handler)
+    LOGGER.info("DPL Acron Export %s läuft auf http://%s:%s", __version__, host, port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

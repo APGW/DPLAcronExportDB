@@ -15,6 +15,18 @@ client_config="$config_dir/mariadb-client.cnf"
 backup_dir="/var/backups/dpl-acron"
 service_user="dpl-acron"
 service_group="dpl-acron"
+service_was_active=0
+
+restore_service_after_failure() {
+  local exit_code=$?
+  if [[ "$exit_code" -ne 0 && "$service_was_active" -eq 1 ]]; then
+    echo "Installation fehlgeschlagen; zuvor laufender Dienst wird wieder gestartet." >&2
+    systemctl daemon-reload || true
+    systemctl start dpl-acron.service || true
+  fi
+  exit "$exit_code"
+}
+trap restore_service_after_failure EXIT
 
 if [[ -r /etc/os-release ]]; then
   source /etc/os-release
@@ -70,6 +82,25 @@ if [[ ! -d "$source_dir/dpl_export" ]]; then
   exit 1
 fi
 
+echo "Prüfe Release vor der Installation ..."
+PYTHONDONTWRITEBYTECODE=1 python3 "$source_dir/app.py" --version
+PYTHONDONTWRITEBYTECODE=1 python3 - "$source_dir" <<'PY'
+import json
+import sys
+from pathlib import Path
+
+root = Path(sys.argv[1])
+sys.path.insert(0, str(root))
+from dpl_export.modules import list_modules
+
+modules = list_modules()
+if [module.code for module in modules] != ["pwk", "rue", "rueb"]:
+    raise SystemExit("Die internen Anlagenmodule sind unvollständig.")
+for module in modules:
+    json.loads(module.snapshot())
+print("Anlagenmodule geprüft:", ", ".join(module.code.upper() for module in modules))
+PY
+
 if ! getent group "$service_group" >/dev/null; then
   groupadd --system "$service_group"
 fi
@@ -77,6 +108,9 @@ if ! id "$service_user" >/dev/null 2>&1; then
   useradd --system --gid "$service_group" --home-dir "$state_dir" --create-home --shell /usr/sbin/nologin "$service_user"
 fi
 
+if systemctl is-active --quiet dpl-acron.service; then
+  service_was_active=1
+fi
 if systemctl list-unit-files dpl-acron.service >/dev/null 2>&1; then
   systemctl stop dpl-acron.service || true
 fi
@@ -92,12 +126,17 @@ cp -a -- "$source_dir/dpl_export/." "$install_dir/dpl_export/"
 find "$install_dir/dpl_export" -type d -exec chmod 0755 {} +
 find "$install_dir/dpl_export" -type f -exec chmod 0644 {} +
 chown -R root:root "$install_dir/dpl_export"
+find "$install_dir/dpl_export" -type d -name '__pycache__' -prune -exec rm -rf -- {} +
 
 cp -a -- "$source_dir/deploy/." "$install_dir/deploy/"
 find "$install_dir/deploy" -type d -exec chmod 0755 {} +
 find "$install_dir/deploy" -type f -exec chmod 0644 {} +
 find "$install_dir/deploy" -type f -name '*.sh' -exec chmod 0755 {} +
 chown -R root:root "$install_dir/deploy"
+
+# Tests gehören nicht in die Betriebsinstallation. Insbesondere dürfen alte
+# Teststände eines früheren Releases keinen Upgradeabbruch verursachen.
+rm -rf -- "$install_dir/tests"
 
 install -o root -g root -m 0644 "$source_dir/app.py" "$install_dir/app.py"
 install -o root -g root -m 0644 "$source_dir/pyproject.toml" "$install_dir/pyproject.toml"
@@ -108,14 +147,6 @@ install -o root -g root -m 0644 "$source_dir/brauckgraben_neu.csv.xlsx" "$instal
 install -o root -g root -m 0644 "$source_dir/shhamm_provider1_WINCC60.csv" "$install_dir/shhamm_provider1_WINCC60.csv"
 install -o root -g root -m 0644 "$source_dir/2026-06-12 DPL_PWK Lippestraße; Braukgraben.xlsx" "$install_dir/2026-06-12 DPL_PWK Lippestraße; Braukgraben.xlsx"
 rm -f -- /usr/local/sbin/dpl-acron-user
-
-if [[ -d "$source_dir/tests" ]]; then
-  rm -rf -- "$install_dir/tests"
-  cp -a -- "$source_dir/tests" "$install_dir/tests"
-  chown -R root:root "$install_dir/tests"
-  find "$install_dir/tests" -type d -exec chmod 0755 {} +
-  find "$install_dir/tests" -type f -exec chmod 0644 {} +
-fi
 
 if [[ ! -f "$database_env" ]]; then
   db_password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
@@ -170,14 +201,6 @@ if [[ -f /etc/default/dpl-acron && ! -f /etc/default/dpl-acron.pre-intranet-v3 ]
   cp -a -- /etc/default/dpl-acron /etc/default/dpl-acron.pre-intranet-v3
 fi
 install -o root -g root -m 0644 "$source_dir/deploy/dpl-acron.env" /etc/default/dpl-acron
-
-if [[ -d "$install_dir/tests" ]]; then
-  (
-    cd "$install_dir"
-    PYTHONDONTWRITEBYTECODE=1 python3 -m unittest discover -s tests -v
-  )
-  rmdir "$install_dir/.tmp" 2>/dev/null || true
-fi
 
 "$install_dir/deploy/backup-mariadb.sh"
 systemctl daemon-reload

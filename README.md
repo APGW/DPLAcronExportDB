@@ -43,13 +43,39 @@ Der ausgelieferte Dienst verwendet ausschließlich MariaDB. DPL-Importe werden
 direkt vorverarbeitet und anschließend in einer MariaDB-Transaktion vollständig
 oder gar nicht aktiviert. Es wird keine SQLite-Arbeits- oder Zwischenbank erzeugt.
 
+## Austauschbare Anlagenmodule
+
+Die Importlogik ist nicht mehr auf `PWK_Analogwerte` fest verdrahtet. Mitgeliefert
+werden die Module `pwk`, `rue` und `rueb`; RRB und SKU sind bis zum Vorliegen
+geeigneter DPLs bewusst nicht aktiviert. Im Webinterface wählt der Benutzer vor
+dem Upload nur den Anlagentyp aus. Der Server prüft diese Auswahl gegen die
+Tabellenstruktur der DPL und speichert sie einschließlich Modulversion im aktiven
+Projekt.
+
+Ein standardisiertes `.dplmod`-Paket enthält genau:
+
+- `module.json` mit Blatterkennung, Spaltenabbildung, Markierungsbereich und Formelregeln
+- `database-template.json` für das gemeinsame normalisierte Datenmodell
+- `example-data.json` mit kleinen normalisierten Beispieldaten
+
+Anlagenmodule werden ausschließlich intern durch Administratoren bereitgestellt;
+das Webinterface bietet weder Modulimport noch Modulexport an. Interne Module
+liegen unter `data/modules` beziehungsweise `/var/lib/dpl-acron/data/modules` und
+überschreiben die gleichnamige mitgelieferte Version. Der Modul-Snapshot wird pro
+DPL-Import in MariaDB abgelegt, damit später nachvollziehbar bleibt, mit welcher
+Zuordnung importiert wurde.
+
 ## DPL-Import
 
-Die Oberfläche akzeptiert `.xlsx`-Dateien bis 25 MB. Die Datei wird vollständig
-gelesen und validiert, bevor der aktive MariaDB-Datenstand innerhalb einer
-Transaktion ersetzt wird.
+Die Oberfläche akzeptiert `.xlsx`-Dateien bis 25 MB einzeln oder gesammelt per
+Dateiauswahl, Drag-and-drop und Zwischenablage. Mehrere DPLs landen in einer
+Warteschlange und werden bewusst nacheinander aktiviert. Jede ausgewählte Datei
+wird vollständig gelesen und validiert, bevor der aktive MariaDB-Datenstand
+innerhalb einer Transaktion ersetzt wird.
 
-- erforderliche Blätter: `Info und Historie AnlagenDPL` und `PWK_Analogwerte`
+- erforderliche Blätter: `Info und Historie AnlagenDPL` plus das Analogwertblatt des erkannten Moduls
+- unterstützte Analogwertblätter: `PWK_Analogwerte`, `RUE Analogwerte`, `RWB Analogwerte`
+- Anlagentyp: vor dem Upload auswählen; eine nicht zur DPL passende Auswahl wird abgewiesen
 - Auswahl: vollflächig gelbe Zeilen und jeder Datensatz mit mindestens einer orange geänderten Zelle
 - orange geänderte Zellen: gesonderte Kennzeichnung und Filter im Webinterface
 - Rechenwerte: automatische Summenformeln aus den tatsächlich ausgewählten Maschinenwerten
@@ -104,5 +130,9 @@ python app.py export
 
 ```powershell
 python -m unittest discover -s tests -v
+python app.py --version
 python app.py validate
 ```
+
+Der Release-Build führt die Tests standardmäßig vor dem Packen aus und erzeugt
+neben dem Debian-Archiv eine `.sha256`-Datei zur Integritätsprüfung.

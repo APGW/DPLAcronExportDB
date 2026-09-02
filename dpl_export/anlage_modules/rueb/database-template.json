@@ -1,0 +1,2 @@
+{"schema":"dpl-acron.normalized/v1","entities":{"project":["module_code","module_version","name","ba_number","acron_prefix"],"datapoint":["folder_level1","folder_level2","number","class_name","long_name","vg_short","pcs7_variable","unit","decimals","archive","cycle_seconds","delta1","value_type","data_type","range_min","range_max","acron_long","acron_short","comment"],"acron_config":["identification","name","group","type","formula","value_handling","compression"],"provider_config":["include","variable","description","group","type","cycle","delta"]}}
+

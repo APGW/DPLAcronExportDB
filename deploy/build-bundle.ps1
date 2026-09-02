@@ -67,5 +67,10 @@ finally {
 }
 
 $bundle = Get-Item -LiteralPath $absoluteOutput
+$checksum = (Get-FileHash -Algorithm SHA256 -LiteralPath $bundle.FullName).Hash.ToLowerInvariant()
+$checksumPath = "$absoluteOutput.sha256"
+Set-Content -LiteralPath $checksumPath -Encoding ascii -NoNewline -Value "$checksum  $($bundle.Name)`n"
 Write-Host "Bundle erstellt: $($bundle.FullName)"
 Write-Host "Größe: $([math]::Round($bundle.Length / 1MB, 2)) MB"
+Write-Host "SHA-256: $checksum"
+Write-Host "Prüfsumme: $checksumPath"

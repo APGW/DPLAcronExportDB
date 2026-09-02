@@ -47,6 +47,43 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("bulk-review", application)
         self.assertIn("undo-action", application)
 
+    def test_undo_redo_covers_saved_edits_and_keyboard_shortcuts(self) -> None:
+        page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
+        application = (ROOT / "dpl_export" / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("rememberDatapointAction(before, updated,", application)
+        self.assertIn('scope === "enabled"', application)
+        self.assertIn('document.addEventListener("keydown", handleHistoryShortcut)', application)
+        self.assertIn('key === "y"', application)
+        self.assertIn("isNativeUndoTarget", application)
+        self.assertIn("Strg+Z", page)
+        self.assertIn("Strg+Y", page)
+
+    def test_module_management_is_internal_and_ui_only_selects_the_type(self) -> None:
+        server = (ROOT / "dpl_export" / "web_server.py").read_text(encoding="utf-8")
+        page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
+        application = (ROOT / "dpl_export" / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn("dpl-module-select", page)
+        self.assertIn('"X-Anlage-Module": moduleCode', application)
+        self.assertNotIn("module-upload-input", page)
+        self.assertNotIn("Anlagenmodule verwalten", page)
+        self.assertNotIn("/api/modules/import", server)
+        self.assertNotIn("/api/modules/{", server)
+        self.assertNotIn("uploadModule", application)
+
+    def test_dpl_upload_can_bypass_a_slow_windows_file_dialog(self) -> None:
+        page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
+        application = (ROOT / "dpl_export" / "web" / "app.js").read_text(encoding="utf-8")
+        self.assertIn('type="file" accept=".xlsx" multiple', page)
+        self.assertIn("mit Strg+V einfügen", page)
+        self.assertIn("function pasteUploadFile(event)", application)
+        self.assertIn('document.addEventListener("paste", pasteUploadFile)', application)
+        self.assertIn("function selectUploadFiles(fileList)", application)
+        self.assertIn("selectUploadFiles(event.dataTransfer.files)", application)
+        self.assertIn("upload-file-list", page)
+        self.assertIn("Für den nächsten Import ausgewählt", page)
+        self.assertIn("upload-start-filename", page)
+        self.assertIn("upload-file-state", application)
+
     def test_company_logo_is_shipped(self) -> None:
         page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("/assets/agw-logo.png", page)
@@ -60,6 +97,8 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertNotIn("incoming_database", upload)
         self.assertNotIn("import sqlite3", upload)
         self.assertNotIn('    "tests",', bundle)
+        self.assertNotIn("ensure_database", application)
+        self.assertIn("require_initialized_project(database)", application)
 
     def test_systemd_service_uses_local_mariadb_configuration(self) -> None:
         service = (ROOT / "deploy" / "dpl-acron.service").read_text(encoding="utf-8")
@@ -68,6 +107,8 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertNotIn("dpl.sqlite", service)
         self.assertIn("ReadWritePaths=/var/lib/dpl-acron", service)
         self.assertIn("User=dpl-acron", service)
+        self.assertIn("TasksMax=64", service)
+        self.assertIn("RestrictNamespaces=true", service)
 
     def test_installer_configures_existing_mariadb_and_connector(self) -> None:
         installer = (ROOT / "deploy" / "install-debian13.sh").read_text(encoding="utf-8")
@@ -83,6 +124,11 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertNotIn("create-user --username admin", installer)
         self.assertIn("rm -f -- /usr/local/sbin/dpl-acron-user", installer)
         self.assertIn("dpl-acron.pre-intranet-v3", installer)
+        self.assertIn("Prüfe Release vor der Installation", installer)
+        self.assertIn("Anlagenmodule geprüft", installer)
+        self.assertIn('rm -rf -- "$install_dir/tests"', installer)
+        self.assertNotIn("python3 -m unittest discover", installer)
+        self.assertIn("restore_service_after_failure", installer)
 
     def test_intranet_binding_and_optional_https_proxy_are_prepared(self) -> None:
         environment = (ROOT / "deploy" / "dpl-acron.env").read_text(encoding="utf-8")
@@ -112,6 +158,14 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('"$database_name"', backup)
         self.assertIn('source "$database_env"', backup)
         self.assertIn("-mtime +14 -delete", backup)
+
+    def test_release_build_creates_a_checksum_and_excludes_runtime_cache(self) -> None:
+        bundle = (ROOT / "deploy" / "build-bundle.ps1").read_text(encoding="utf-8")
+        ignore = (ROOT / ".gitignore").read_text(encoding="utf-8")
+        self.assertIn("Get-FileHash -Algorithm SHA256", bundle)
+        self.assertIn("$absoluteOutput.sha256", bundle)
+        self.assertIn("__pycache__/", ignore)
+        self.assertIn("dist/backups/", ignore)
 
 
 if __name__ == "__main__":

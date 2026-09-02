@@ -2,49 +2,48 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 from pathlib import Path
 
 from dpl_export.database import DatabaseTarget, database_from_environment
 from dpl_export.exporter import write_exports
 from dpl_export.importer import import_project
+from dpl_export.runtime import APP_VERSION, BUNDLED_PATHS, DEFAULT_HOST, DEFAULT_PORT
 from dpl_export.service import project_summary
 from dpl_export.web_server import serve
 
 
-BASE_DIR = Path(__file__).resolve().parent
-DEFAULT_DPL = BASE_DIR / "2026-06-12 DPL_PWK Lippestraße; Braukgraben.xlsx"
-DEFAULT_ACRON_TEMPLATE = BASE_DIR / "brauckgraben_neu.csv.xlsx"
-DEFAULT_PROVIDER_TEMPLATE = BASE_DIR / "shhamm_provider1_WINCC60.csv"
+LOGGER = logging.getLogger("dpl_acron")
 
 
-def ensure_database(database: DatabaseTarget) -> None:
-    result = import_project(
-        database,
-        DEFAULT_DPL,
-        DEFAULT_ACRON_TEMPLATE,
-        DEFAULT_PROVIDER_TEMPLATE,
-    )
-    if result["status"] == "imported":
-        print(f"Datenbank erstellt: {result['selected']} markierte Datensätze.")
+def require_initialized_project(database: DatabaseTarget) -> None:
+    try:
+        project_summary(database)
+    except KeyError as exc:
+        raise RuntimeError(
+            "Die Datenbank enthält noch kein aktives Projekt. "
+            "Initialisieren Sie sie einmalig mit: python3 app.py init"
+        ) from exc
 
 
 def parser() -> argparse.ArgumentParser:
     root = argparse.ArgumentParser(description="DPL in Acron- und WINCC60-Provider-Exporte überführen")
+    root.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     root.add_argument("--data-dir", type=Path, help="Verzeichnis für Uploads; sonst DPL_DATA_DIR")
     commands = root.add_subparsers(dest="command")
 
     init = commands.add_parser("init", help="DPL einlesen und Datenbank anlegen")
     init.add_argument("--force", action="store_true", help="Vorhandenes Projekt aus der DPL neu aufbauen")
-    init.add_argument("--dpl", type=Path, default=DEFAULT_DPL)
-    init.add_argument("--acron-template", type=Path, default=DEFAULT_ACRON_TEMPLATE)
-    init.add_argument("--provider-template", type=Path, default=DEFAULT_PROVIDER_TEMPLATE)
+    init.add_argument("--dpl", type=Path, default=BUNDLED_PATHS.default_dpl)
+    init.add_argument("--acron-template", type=Path, default=BUNDLED_PATHS.acron_template)
+    init.add_argument("--provider-template", type=Path, default=BUNDLED_PATHS.provider_template)
 
     web = commands.add_parser("serve", help="Weboberfläche starten")
-    web.add_argument("--host", default="127.0.0.1")
-    web.add_argument("--port", type=int, default=8765)
+    web.add_argument("--host", default=DEFAULT_HOST)
+    web.add_argument("--port", type=int, default=DEFAULT_PORT)
 
     export = commands.add_parser("export", help="Beide CSV-Dateien erzeugen")
-    export.add_argument("--output", type=Path, default=BASE_DIR / "exports")
+    export.add_argument("--output", type=Path, default=BUNDLED_PATHS.root / "exports")
 
     commands.add_parser("validate", help="Import- und Exportstatus prüfen")
 
@@ -52,6 +51,7 @@ def parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
     arguments = parser().parse_args()
     database: DatabaseTarget = database_from_environment()
     command = arguments.command or "serve"
@@ -67,12 +67,13 @@ def main() -> None:
         print(json.dumps(result, ensure_ascii=False, indent=2))
         return
 
-    ensure_database(database)
+    BUNDLED_PATHS.require_templates()
+    require_initialized_project(database)
     if command == "serve":
         serve(
             database,
-            getattr(arguments, "host", "127.0.0.1"),
-            getattr(arguments, "port", 8765),
+            getattr(arguments, "host", DEFAULT_HOST),
+            getattr(arguments, "port", DEFAULT_PORT),
             data_directory=arguments.data_dir.resolve() if arguments.data_dir else None,
         )
     elif command == "export":
@@ -83,4 +84,8 @@ def main() -> None:
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except (OSError, RuntimeError, ValueError) as exc:
+        LOGGER.error("Start abgebrochen: %s", exc)
+        raise SystemExit(1) from exc

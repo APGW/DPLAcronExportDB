@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .database import DatabaseConnection, DatabaseTarget, connect, initialize_schema, transaction
+from .modules import detect_module, get_module
 from .xlsx_reader import Sheet, read_workbook, row_marker
 
 
@@ -206,63 +207,70 @@ def _store_template(
     )
 
 
-def _selected_rows(sheet: Sheet) -> list[tuple[int, str, dict[int, Any]]]:
+def _column_value(values: dict[int, Any], column: int | list[int] | None) -> Any:
+    if column is None:
+        return None
+    if isinstance(column, list):
+        return next((values.get(index) for index in column if _text(values.get(index))), None)
+    return values.get(column)
+
+
+def _selected_rows(
+    sheet: Sheet, *, first_data_row: int, marker_columns: list[int]
+) -> list[tuple[int, str, dict[int, Any]]]:
     selected = []
     for row_number in sorted(sheet.rows):
-        if row_number < 5:
+        if row_number < first_data_row:
             continue
-        marker = row_marker(sheet, row_number)
+        marker = row_marker(sheet, row_number, marker_columns[0], marker_columns[1])
         if marker:
             selected.append((row_number, marker, sheet.row_values(row_number)))
     return selected
 
 
 def _automatic_formulas(
-    selected: list[tuple[int, str, dict[int, Any]]], ba_number: str
+    selected: list[tuple[int, str, dict[int, Any]]],
+    ba_number: str,
+    columns: dict[str, Any],
+    rules: list[dict[str, Any]],
 ) -> dict[int, str]:
     entries = []
     for source_row, _, values in selected:
-        vg_short = _text(values.get(8)) or _text(values.get(5))
+        vg_short = _text(_column_value(values, columns["vg_short"]))
         entries.append(
             {
                 "row": source_row,
                 "identification": _identification(ba_number, vg_short),
-                "long_name": _text(values.get(4)).casefold(),
-                "value_type": _text(values.get(40)).casefold(),
+                "long_name": _text(_column_value(values, columns["long_name"])).casefold(),
+                "value_type": _text(_column_value(values, columns["value_type"])).casefold(),
             }
         )
 
     formulas: dict[int, str] = {}
-    rules = (
-        ("fördermenge", re.compile(r"_M(\d+)_.*BER_VOL$", re.IGNORECASE)),
-        ("förderleistung", re.compile(r"_M(\d+)_.*BER_QIST$", re.IGNORECASE)),
-    )
     for target in entries:
         if "rechenwert" not in target["value_type"]:
             continue
-        for label, pattern in rules:
-            machine_total = "aller maschinen" in target["long_name"]
-            single_system = "fördersystem" in target["long_name"]
-            if label not in target["long_name"] or not (machine_total or single_system):
+        for rule in rules:
+            if any(term not in target["long_name"] for term in rule.get("target_contains", [])):
                 continue
+            if rule.get("target_any") and not any(
+                term in target["long_name"] for term in rule["target_any"]
+            ):
+                continue
+            pattern = re.compile(rule["source_regex"], re.IGNORECASE)
             sources = []
             for candidate in entries:
                 match = pattern.search(candidate["identification"])
                 if match:
-                    sources.append((int(match.group(1)), candidate["row"], candidate["identification"]))
+                    sort_key: Any = candidate["identification"]
+                    if rule.get("sort") == "capture_int" and match.groups():
+                        sort_key = int(match.group(1))
+                    sources.append((sort_key, candidate["row"], candidate["identification"]))
             if sources:
                 formulas[target["row"]] = " + ".join(
                     identification for _, _, identification in sorted(sources)
                 )
             break
-        if "stromverbrauch" in target["long_name"]:
-            energy_sources = sorted(
-                candidate["identification"]
-                for candidate in entries
-                if re.search(r"_WEL_(?:HT|NT)_HAND$", candidate["identification"], re.IGNORECASE)
-            )
-            if energy_sources:
-                formulas[target["row"]] = " + ".join(energy_sources)
     return formulas
 
 
@@ -274,6 +282,8 @@ def import_project(
     *,
     force: bool = False,
     source_filename: str | None = None,
+    module_root: Path | None = None,
+    module_code: str | None = None,
 ) -> dict[str, int | str]:
     connection = connect(database)
     initialize_schema(connection)
@@ -297,22 +307,34 @@ def import_project(
 
     try:
         workbook = read_workbook(dpl_path)
-        try:
-            metadata = workbook.sheet("Info und Historie AnlagenDPL")
-            analog_values = workbook.sheet("PWK_Analogwerte")
-        except ValueError as exc:
+        detected_module = detect_module(workbook, module_root)
+        module = get_module(module_code, module_root) if module_code else detected_module
+        if module.code != detected_module.code:
             raise ValueError(
-                "Die DPL benötigt die Tabellenblätter „Info und Historie AnlagenDPL“ und „PWK_Analogwerte“."
-            ) from exc
-        selected = _selected_rows(analog_values)
+                f"Ausgewählt wurde {module.name}, die DPL entspricht jedoch {detected_module.name}. "
+                "Bitte den richtigen Anlagentyp auswählen."
+            )
+        dpl = module.config["dpl"]
+        metadata = workbook.sheet(dpl["metadata_sheet"])
+        source_sheet = next(name for name in dpl["sheet_names"] if name in workbook.sheets)
+        analog_values = workbook.sheet(source_sheet)
+        columns = dpl["columns"]
+        selected = _selected_rows(
+            analog_values,
+            first_data_row=int(dpl["first_data_row"]),
+            marker_columns=dpl["marker_columns"],
+        )
         if not selected:
             raise ValueError(
-                "In PWK_Analogwerte wurden keine gelb ausgewählten Zeilen oder orange geänderten Zellen gefunden."
+                f"In {source_sheet} wurden keine gelb ausgewählten Zeilen oder orange geänderten Zellen gefunden."
             )
 
-        project_name = _project_name(metadata.value(3, 2), source_filename or dpl_path.name)
-        ba_number = _text(metadata.value(5, 2))
-        acron_prefix = _normalize_prefix(metadata.value(6, 2))
+        metadata_map = dpl["metadata"]
+        project_name = _project_name(
+            metadata.value(*metadata_map["project_name"]), source_filename or dpl_path.name
+        )
+        ba_number = _text(metadata.value(*metadata_map["ba_number"]))
+        acron_prefix = _normalize_prefix(metadata.value(*metadata_map["acron_prefix"]))
         if not ba_number or not project_name:
             raise ValueError("Projektname oder BA-Nummer fehlen in der Anlagenhistorie.")
 
@@ -322,7 +344,9 @@ def import_project(
         provider_group_root = _provider_group(template_provider_group, project_name)
         _set_template_group(acron_headers, acron_defaults, acron_group_root)
         _set_template_group(provider_headers, provider_defaults, provider_group_root)
-        automatic_formulas = _automatic_formulas(selected, ba_number)
+        automatic_formulas = _automatic_formulas(
+            selected, ba_number, columns, module.config.get("automatic_formulas", [])
+        )
     except Exception:
         connection.close()
         raise
@@ -333,13 +357,15 @@ def import_project(
         project_cursor = connection.execute(
             """
             INSERT INTO projects(
-                code, name, ba_number, acron_prefix, acron_group_root, provider_group_root,
+                code, module_code, module_version, name, ba_number, acron_prefix, acron_group_root, provider_group_root,
                 acron_filename, provider_filename, source_dpl, source_acron_template,
                 source_provider_template
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 "braukgraben",
+                module.code,
+                module.version,
                 project_name,
                 ba_number,
                 acron_prefix,
@@ -355,10 +381,10 @@ def import_project(
         project_id = int(project_cursor.lastrowid)
         import_cursor = connection.execute(
             """
-            INSERT INTO imports(project_id, source_filename, source_sha256, selected_rows)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO imports(project_id, source_filename, source_sha256, selected_rows, module_config_json)
+            VALUES (?, ?, ?, ?, ?)
             """,
-            (project_id, source_filename or dpl_path.name, _sha256(dpl_path), len(selected)),
+            (project_id, source_filename or dpl_path.name, _sha256(dpl_path), len(selected), module.snapshot()),
         )
         import_id = int(import_cursor.lastrowid)
         _store_template(connection, project_id, "acron", acron_headers, acron_defaults)
@@ -368,24 +394,30 @@ def import_project(
         for source_row, marker_state, values in selected:
             marker = "orange" if marker_state in {"orange", "orange_changed"} else "yellow"
             has_orange_changes = int(marker_state in {"yellow_with_orange", "orange_changed", "orange"})
-            long_name = _text(values.get(4))
-            vg_short = _text(values.get(8)) or _text(values.get(5))
-            source_data_type = _text(values.get(44)).upper()
-            value_type = _text(values.get(40))
+            long_name = _text(_column_value(values, columns["long_name"]))
+            vg_short = _text(_column_value(values, columns["vg_short"]))
+            source_data_type = _text(_column_value(values, columns["data_type"])).upper()
+            value_type = _text(_column_value(values, columns["value_type"]))
             variable_type = _lookup(VALUE_TYPE_CODES, value_type, 0) or 0
-            source_pcs7 = _text(values.get(29))
-            source_min, source_max = _bounds(source_data_type, values.get(48), values.get(49))
-            decimals = _integer(values.get(11), 0) or 0
+            source_pcs7 = _text(_column_value(values, columns["pcs7_variable"]))
+            source_min, source_max = _bounds(
+                source_data_type,
+                _column_value(values, columns["range_min"]),
+                _column_value(values, columns["range_max"]),
+            )
+            decimals_raw = _column_value(values, columns["decimals"])
+            unit = _text(_column_value(values, columns["unit"]))
+            decimals = _integer(decimals_raw, 0) or 0
             identification = _identification(ba_number, vg_short)
             acron_name = _name(acron_prefix, long_name)
-            folder_level1 = _text(values.get(0))
+            folder_level1 = _text(_column_value(values, columns["folder_level1"]))
             acron_group = f"{acron_group_root}|{folder_level1}" if folder_level1 else acron_group_root
-            pval_handling = _lookup(PVAL_HANDLING_CODES, values.get(41), 0) or 0
-            interval_mode = _lookup(AGGREGATION_CODES, values.get(42))
-            period_mode = _lookup(AGGREGATION_CODES, values.get(43))
-            cycle = _integer(values.get(32))
-            delta1 = _number_text(values.get(34))
-            format_out = 2 if values.get(11) in (None, "", "-") and _text(values.get(10)) == "-" else 0
+            pval_handling = _lookup(PVAL_HANDLING_CODES, _column_value(values, columns["pval_handling"]), 0) or 0
+            interval_mode = _lookup(AGGREGATION_CODES, _column_value(values, columns["interval_comp"]))
+            period_mode = _lookup(AGGREGATION_CODES, _column_value(values, columns["period_comp"]))
+            cycle = _integer(_column_value(values, columns["cycle_seconds"]))
+            delta1 = _number_text(_column_value(values, columns["delta1"]))
+            format_out = 2 if decimals_raw in (None, "", "-") and unit == "-" else 0
             include_provider = int(variable_type == 0 and bool(source_pcs7))
             provider_count += include_provider
 
@@ -398,32 +430,33 @@ def import_project(
                     source_unit, source_decimals, source_archive, source_cycle_seconds,
                     source_delta1, source_value_type, source_data_type, source_range_min,
                     source_range_max, source_acron_long, source_acron_short
-                ) VALUES (?, ?, 'PWK_Analogwerte', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     project_id,
                     import_id,
+                    source_sheet,
                     source_row,
-                    _text(values.get(2)),
+                    _text(_column_value(values, columns["number"])),
                     marker,
                     has_orange_changes,
                     folder_level1,
-                    _text(values.get(1)),
-                    _text(values.get(3)),
+                    _text(_column_value(values, columns["folder_level2"])),
+                    _text(_column_value(values, columns["class_name"])),
                     long_name,
                     vg_short,
                     source_pcs7,
-                    _text(values.get(10)),
-                    _text(values.get(11)),
-                    _integer(values.get(31), 0) or 0,
+                    unit,
+                    _text(decimals_raw),
+                    _integer(_column_value(values, columns["archive"]), 0) or 0,
                     cycle,
-                    _text(values.get(34)),
+                    _text(_column_value(values, columns["delta1"])),
                     value_type,
                     source_data_type,
-                    _number_text(values.get(48)),
-                    _number_text(values.get(49)),
-                    _text(values.get(38)),
-                    _text(values.get(39)),
+                    _number_text(_column_value(values, columns["range_min"])),
+                    _number_text(_column_value(values, columns["range_max"])),
+                    _text(_column_value(values, columns["acron_long"])),
+                    _text(_column_value(values, columns["acron_short"])),
                 ),
             )
             datapoint_id = int(datapoint_cursor.lastrowid)
@@ -448,14 +481,14 @@ def import_project(
                     source_max,
                     source_pcs7 if variable_type == 0 else automatic_formulas.get(source_row, ""),
                     pval_handling,
-                    _text(values.get(10)),
+                    unit,
                     decimals,
                     cycle,
                     interval_mode,
                     period_mode,
                     period_mode,
                     period_mode,
-                    _text(values.get(50)),
+                    _text(_column_value(values, columns["comment"])),
                 ),
             )
             connection.execute(
@@ -493,5 +526,8 @@ def import_project(
         "project_id": project_id,
         "selected": len(selected),
         "provider": provider_count,
+        "module": module.code,
+        "module_name": module.name,
+        "module_version": module.version,
         "status": "imported",
     }

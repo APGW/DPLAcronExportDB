@@ -3,6 +3,8 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
+    module_code TEXT NOT NULL DEFAULT 'pwk',
+    module_version TEXT NOT NULL DEFAULT '1.0.0',
     name TEXT NOT NULL,
     ba_number TEXT NOT NULL,
     acron_prefix TEXT NOT NULL,
@@ -23,6 +25,7 @@ CREATE TABLE IF NOT EXISTS imports (
     source_filename TEXT NOT NULL,
     source_sha256 TEXT NOT NULL,
     selected_rows INTEGER NOT NULL,
+    module_config_json TEXT NOT NULL DEFAULT '{}',
     imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     UNIQUE(project_id, source_sha256)
 );

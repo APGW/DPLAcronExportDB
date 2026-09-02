@@ -1,3 +1,6 @@
 """DPL to Acron conversion service."""
 
-__version__ = "2.0.0"
+from .runtime import APP_VERSION
+
+
+__version__ = APP_VERSION

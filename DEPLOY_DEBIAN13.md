@@ -28,12 +28,15 @@ Archiv vom Windows-Rechner auf die private IP übertragen:
 
 ```powershell
 scp .\dist\dpl-acron-debian13.tar.gz BENUTZER@CT-IP:/tmp/
+scp .\dist\dpl-acron-debian13.tar.gz.sha256 BENUTZER@CT-IP:/tmp/
 ssh BENUTZER@CT-IP
 ```
 
 Auf Debian installieren:
 
 ```bash
+cd /tmp
+sha256sum --check dpl-acron-debian13.tar.gz.sha256
 mkdir -p ~/dpl-acron
 tar -xzf /tmp/dpl-acron-debian13.tar.gz -C ~/dpl-acron
 cd ~/dpl-acron
@@ -54,7 +57,7 @@ Es ist kein Benutzerkonto erforderlich. Der Installer:
 4. erstellt vor jeder Schemamigration eine `pre-upgrade`-Sicherung,
 5. legt das Schema an und importiert die bereitgestellte DPL,
 6. entfernt bei einer Aktualisierung alte Login-/Sessiontabellen,
-7. führt die automatisierten Tests aus,
+7. prüft Programmversion und interne Anlagenmodule vor der Installation,
 8. erstellt eine Sicherung des installierten Stands,
 9. startet Anwendung und täglichen Sicherungstimer,
 10. prüft den Gesundheitsendpunkt.
@@ -152,7 +155,7 @@ curl http://127.0.0.1:8765/api/health
 Erwartete Antwort:
 
 ```json
-{"status":"ok","backend":"mariadb"}
+{"status":"ok","backend":"mariadb","project":"PWK …","version":"3.1.1"}
 ```
 
 Wichtige Pfade:
@@ -160,6 +163,7 @@ Wichtige Pfade:
 - Programm: `/opt/dpl-acron`
 - Uploads: `/var/lib/dpl-acron/data/imports`
 - optionale PCS7-Exporte: `/var/lib/dpl-acron/data/pcs7`
+- intern durch Administratoren bereitgestellte Anlagenmodule: `/var/lib/dpl-acron/data/modules`
 - Datenbankzugang: `/etc/dpl-acron/database.env`
 - MariaDB-Dump-Konfiguration: `/etc/dpl-acron/mariadb-client.cnf`
 - Sicherungen: `/var/backups/dpl-acron`
