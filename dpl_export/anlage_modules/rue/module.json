@@ -1,0 +1,25 @@
+{
+  "schema": "dpl-acron.module/v1",
+  "code": "rue",
+  "name": "RÜ – Regenüberlauf",
+  "version": "1.0.0",
+  "description": "Datenpunktlisten für Regenüberläufe der Struktur V7.0",
+  "dpl": {
+    "metadata_sheet": "Info und Historie AnlagenDPL",
+    "sheet_names": ["RUE Analogwerte"],
+    "header_row": 3,
+    "first_data_row": 5,
+    "marker_columns": [0, 42],
+    "metadata": {"project_name": [3, 2], "ba_number": [5, 2], "acron_prefix": [6, 2]},
+    "columns": {
+      "folder_level1": 0, "folder_level2": null, "number": 1, "class_name": 2,
+      "long_name": 3, "vg_short": 4, "pcs7_variable": 21, "unit": 6,
+      "decimals": 7, "archive": 23, "cycle_seconds": 24, "delta1": 26,
+      "value_type": 32, "pval_handling": 33, "interval_comp": 34,
+      "period_comp": 34, "data_type": 35, "range_min": 39, "range_max": 40,
+      "acron_long": 30, "acron_short": 31, "comment": 41
+    }
+  },
+  "automatic_formulas": []
+}
+

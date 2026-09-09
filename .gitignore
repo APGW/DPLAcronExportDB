@@ -1,0 +1,21 @@
+__pycache__/
+*.py[cod]
+.tmp/
+.publish/
+.venv/
+*.log
+
+# Laufzeitdaten werden von MariaDB beziehungsweise /var/lib/dpl-acron verwaltet.
+data/imports/
+data/pcs7/
+data/modules/
+data/*.sqlite
+data/*.sqlite-*
+
+# Lokale Exporte und allgemeine Build-Ausgaben werden nicht veröffentlicht.
+exports/
+dist/*.tar.gz
+dist/*.tar.gz.sha256
+
+# Lokale Sicherungskopien bleiben außerhalb des Release-Archivs.
+dist/backups/

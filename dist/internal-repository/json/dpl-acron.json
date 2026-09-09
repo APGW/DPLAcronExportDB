@@ -1,0 +1,49 @@
+{
+  "name": "DPL Acron Exportassistent",
+  "slug": "dpl-acron",
+  "categories": [
+    8,
+    19,
+    25
+  ],
+  "date_created": "2026-09-07",
+  "description": "Interner DPL-Prüf- und Acron-Exportservice mit lokaler MariaDB.",
+  "type": "ct",
+  "updateable": true,
+  "privileged": false,
+  "interface_port": 8765,
+  "documentation": "https://dpl-acron.intern/docs/PROXMOX_CT.md",
+  "website": "https://dpl-acron.intern/",
+  "repository": "https://dpl-acron.intern/",
+  "architectures": [
+    "amd64"
+  ],
+  "platforms": [
+    "pve"
+  ],
+  "logo": "https://dpl-acron.intern/assets/agw-logo.png",
+  "install_methods": [
+    {
+      "type": "default",
+      "script": "ct/dpl-acron.sh",
+      "config_path": "/etc/dpl-acron/database.env",
+      "resources": {
+        "cpu": 2,
+        "ram": 2048,
+        "hdd": 8,
+        "os": "Debian",
+        "version": "13"
+      }
+    }
+  ],
+  "default_credentials": {
+    "username": null,
+    "password": null
+  },
+  "notes": [
+    {
+      "text": "Nur über Intranet oder VPN veröffentlichen.",
+      "type": "warning"
+    }
+  ]
+}

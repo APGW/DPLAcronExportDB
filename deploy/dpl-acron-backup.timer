@@ -1,0 +1,11 @@
+[Unit]
+Description=Tägliche MariaDB-Sicherung des DPL Acron Exportassistenten
+
+[Timer]
+OnCalendar=*-*-* 02:15:00
+RandomizedDelaySec=15m
+Persistent=true
+Unit=dpl-acron-backup.service
+
+[Install]
+WantedBy=timers.target
