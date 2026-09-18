@@ -67,10 +67,12 @@ class AnlageModuleTest(unittest.TestCase):
         legacy = resolve_dpl_layout(module, workbook({
             24: "PCS7 Variable", 26: "Soll archiviert werden?", 35: "Wertetyp in Acron",
         }))
-        self.assertEqual(29, current["columns"]["pcs7_variable"])
-        self.assertEqual([0, 56], current["marker_columns"])
-        self.assertEqual(24, legacy["columns"]["pcs7_variable"])
-        self.assertEqual([0, 45], legacy["marker_columns"])
+        self.assertEqual(29, current.columns["pcs7_variable"])
+        self.assertEqual((0, 56), current.marker_columns)
+        self.assertEqual("Standard", current.name)
+        self.assertEqual(24, legacy.columns["pcs7_variable"])
+        self.assertEqual((0, 45), legacy.marker_columns)
+        self.assertEqual("V7.0 / Bestandslayout", legacy.name)
 
     def test_module_package_can_be_exported_and_hot_replaced(self) -> None:
         filename, content = export_module_package("rue")

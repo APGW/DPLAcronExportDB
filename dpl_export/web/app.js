@@ -565,13 +565,25 @@ function renderModules(modules) {
   state.modules = modules;
   const select = $("#dpl-module-select");
   const preferred = select.value || state.summary?.project?.module_code || modules[0]?.code || "";
-  select.innerHTML = modules.map((item) => {
-    const types = Array.isArray(item.supportedTypes) ? item.supportedTypes : [];
-    const suffix = types.length > 1 ? ` (${types.join(", ")})` : "";
-    return `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name + suffix)}</option>`;
-  }).join("");
+  select.innerHTML = modules.map((item) =>
+    `<option value="${escapeHtml(item.code)}">${escapeHtml(item.selectLabel || item.name)}</option>`
+  ).join("");
   if (modules.some((item) => item.code === preferred)) select.value = preferred;
   select.disabled = modules.length === 0;
+  updateModuleSelectionContext();
+}
+
+function updateModuleSelectionContext() {
+  const select = $("#dpl-module-select");
+  const selected = state.modules.find((item) => item.code === select.value);
+  select.dataset.module = selected?.code || "";
+  if (!selected) {
+    text("#dpl-module-help", "Es ist kein Anlagenmodul verfügbar.");
+    return;
+  }
+  const types = Array.isArray(selected.supportedTypes) ? selected.supportedTypes.join(", ") : "";
+  const layoutInfo = Number(selected.layoutCount) > 1 ? ` ${selected.layoutCount} DPL-Layouts werden automatisch erkannt.` : "";
+  text("#dpl-module-help", `${selected.description}${types ? ` Unterstützte Anlagentypen: ${types}.` : ""}${layoutInfo}`);
 }
 
 async function reload() {
@@ -1174,6 +1186,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   updateHistoryOverlay();
 
   $("#dpl-upload-input").addEventListener("change", (event) => selectUploadFiles(event.target.files));
+  $("#dpl-module-select").addEventListener("change", updateModuleSelectionContext);
   document.addEventListener("paste", pasteUploadFile);
   $("#upload-start").addEventListener("click", uploadDpl);
   $("#dpl-drop-zone").addEventListener("keydown", (event) => {

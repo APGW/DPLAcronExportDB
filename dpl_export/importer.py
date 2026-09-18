@@ -314,22 +314,21 @@ def import_project(
                 f"Ausgewählt wurde {module.name}, die DPL entspricht jedoch {detected_module.name}. "
                 "Bitte den richtigen Anlagentyp auswählen."
             )
-        dpl = resolve_dpl_layout(module, workbook)
-        metadata = workbook.sheet(dpl["metadata_sheet"])
-        source_sheet = next(name for name in dpl["sheet_names"] if name in workbook.sheets)
-        analog_values = workbook.sheet(source_sheet)
-        columns = dpl["columns"]
+        layout = resolve_dpl_layout(module, workbook)
+        metadata = workbook.sheet(layout.metadata_sheet)
+        analog_values = workbook.sheet(layout.source_sheet)
+        columns = layout.columns
         selected = _selected_rows(
             analog_values,
-            first_data_row=int(dpl["first_data_row"]),
-            marker_columns=dpl["marker_columns"],
+            first_data_row=layout.first_data_row,
+            marker_columns=layout.marker_columns,
         )
         if not selected:
             raise ValueError(
-                f"In {source_sheet} wurden keine gelb ausgewählten Zeilen oder orange geänderten Zellen gefunden."
+                f"In {layout.source_sheet} wurden keine gelb ausgewählten Zeilen oder orange geänderten Zellen gefunden."
             )
 
-        metadata_map = dpl["metadata"]
+        metadata_map = layout.metadata
         project_name = _project_name(
             metadata.value(*metadata_map["project_name"]), source_filename or dpl_path.name
         )
@@ -435,7 +434,7 @@ def import_project(
                 (
                     project_id,
                     import_id,
-                    source_sheet,
+                    layout.source_sheet,
                     source_row,
                     _text(_column_value(values, columns["number"])),
                     marker,

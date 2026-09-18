@@ -1,6 +1,6 @@
 [project]
 name = "dpl-acron-export"
-version = "3.3.0"
+version = "3.4.0"
 description = "Modularer Mehrbenutzer-Webservice mit MariaDB zur Überführung von Anlagen-DPLs in Acron- und WINCC60-Provider-Exporte"
 requires-python = ">=3.11"
 

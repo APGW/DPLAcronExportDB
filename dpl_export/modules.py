@@ -9,6 +9,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Iterable
 
+from .module_layout import DPLLayout, layout_count, resolve_layout, validate_dpl_config
 from .xlsx_reader import WorkbookData
 
 
@@ -16,13 +17,6 @@ BUILTIN_MODULE_ROOT = Path(__file__).with_name("anlage_modules")
 PACKAGE_FILES = ("module.json", "database-template.json", "example-data.json")
 MODULE_CODE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 MAX_MODULE_PACKAGE_BYTES = 2 * 1024 * 1024
-REQUIRED_DPL_COLUMNS = {
-    "folder_level1", "folder_level2", "number", "class_name", "long_name", "vg_short",
-    "pcs7_variable", "unit", "decimals", "archive", "cycle_seconds", "delta1",
-    "value_type", "pval_handling", "interval_comp", "period_comp", "data_type",
-    "range_min", "range_max", "acron_long", "acron_short", "comment",
-}
-LAYOUT_FIELDS = ("header_row", "first_data_row", "marker_columns", "columns")
 
 
 @dataclass(frozen=True)
@@ -40,12 +34,17 @@ class AnlageModule:
         return {
             "code": self.code,
             "name": self.name,
+            "selectLabel": self.config.get("select_label", self.name),
             "version": self.version,
             "description": self.config.get("description", ""),
             "sheetNames": self.config["dpl"]["sheet_names"],
             "supportedTypes": self.config.get("supported_types", [self.code.upper()]),
+            "layoutCount": layout_count(self.config["dpl"]),
             "builtin": self.builtin,
         }
+
+    def resolve_layout(self, workbook: WorkbookData) -> DPLLayout:
+        return resolve_layout(self.name, self.config["dpl"], workbook)
 
     def snapshot(self) -> str:
         return json.dumps(
@@ -69,29 +68,6 @@ def _read_json(path: Path) -> dict[str, Any]:
     return value
 
 
-def _layout_definitions(dpl: dict[str, Any]) -> list[dict[str, Any]]:
-    base = {field: dpl[field] for field in (*LAYOUT_FIELDS, "header_matches") if field in dpl}
-    layouts = [base]
-    extra_layouts = dpl.get("layouts", [])
-    if not isinstance(extra_layouts, list) or any(not isinstance(item, dict) for item in extra_layouts):
-        raise ValueError("dpl.layouts muss eine Liste aus Layout-Objekten sein.")
-    layouts.extend(extra_layouts)
-    return layouts
-
-
-def _validate_layout(code: str, layout: dict[str, Any]) -> None:
-    if any(field not in layout for field in LAYOUT_FIELDS):
-        raise ValueError(f"Die DPL-Layoutkonfiguration des Anlagenmoduls {code} ist unvollständig.")
-    if set(layout["columns"]) != REQUIRED_DPL_COLUMNS:
-        raise ValueError(f"Das Anlagenmodul {code} bildet nicht alle normalisierten Datenpunktfelder ab.")
-    header_matches = layout.get("header_matches", {})
-    if not isinstance(header_matches, dict) or any(
-        not str(column).isdigit() or not isinstance(expected, str) or not expected.strip()
-        for column, expected in header_matches.items()
-    ):
-        raise ValueError(f"Das Anlagenmodul {code} enthält ungültige Layout-Erkennungsmerkmale.")
-
-
 def _validate(root: Path, *, builtin: bool, expected_code: str | None = None) -> AnlageModule:
     missing = [name for name in PACKAGE_FILES if not (root / name).is_file()]
     if missing:
@@ -106,11 +82,7 @@ def _validate(root: Path, *, builtin: bool, expected_code: str | None = None) ->
         if not config.get(field):
             raise ValueError(f"Im Anlagenmodul {code} fehlt {field}.")
     dpl = config["dpl"]
-    required_dpl = ("metadata_sheet", "sheet_names", "metadata", *LAYOUT_FIELDS)
-    if not isinstance(dpl, dict) or any(field not in dpl for field in required_dpl):
-        raise ValueError(f"Die DPL-Konfiguration des Anlagenmoduls {code} ist unvollständig.")
-    for layout in _layout_definitions(dpl):
-        _validate_layout(code, layout)
+    validate_dpl_config(code, dpl)
     if database_template.get("schema") != "dpl-acron.normalized/v1":
         raise ValueError(f"Das Anlagenmodul {code} verwendet keine unterstützte Datenbankschablone.")
     if example_data.get("schema") != "dpl-acron.example/v1":
@@ -147,7 +119,8 @@ def list_modules(custom_root: Path | None = None) -> list[AnlageModule]:
 
 def get_module(code: str, custom_root: Path | None = None) -> AnlageModule:
     normalized = code.strip().casefold()
-    return next((module for module in list_modules(custom_root) if module.code == normalized), None) or _missing(code)
+    modules = list_modules(custom_root)
+    return next((module for module in modules if module.code == normalized), None) or _missing(code)
 
 
 def _missing(code: str) -> AnlageModule:
@@ -156,48 +129,23 @@ def _missing(code: str) -> AnlageModule:
 
 def detect_module(workbook: WorkbookData, custom_root: Path | None = None) -> AnlageModule:
     sheet_names = set(workbook.sheets)
+    modules = list_modules(custom_root)
     matches = []
-    for module in list_modules(custom_root):
+    for module in modules:
         dpl = module.config["dpl"]
         if dpl["metadata_sheet"] in sheet_names and any(name in sheet_names for name in dpl["sheet_names"]):
             matches.append(module)
     if len(matches) != 1:
-        installed = ", ".join(module.name for module in list_modules(custom_root))
+        installed = ", ".join(module.name for module in modules)
         if not matches:
             raise ValueError(f"Kein passendes Anlagenmodul anhand der Tabellenblätter erkannt. Installiert: {installed}.")
         raise ValueError("Die DPL passt zu mehreren Anlagenmodulen; bitte die Modulkonfiguration prüfen.")
     return matches[0]
 
 
-def _normalized_header(value: Any) -> str:
-    return " ".join(str(value or "").casefold().split())
-
-
-def resolve_dpl_layout(module: AnlageModule, workbook: WorkbookData) -> dict[str, Any]:
-    """Return the column layout matching the uploaded workbook generation."""
-    dpl = module.config["dpl"]
-    source_sheet = next((name for name in dpl["sheet_names"] if name in workbook.sheets), None)
-    if source_sheet is None:
-        raise ValueError(f"Kein Analogwertblatt für {module.name} gefunden.")
-    sheet = workbook.sheet(source_sheet)
-    candidates = []
-    for layout in _layout_definitions(dpl):
-        header_row = int(layout["header_row"])
-        matches = layout.get("header_matches", {})
-        if all(
-            _normalized_header(expected) in _normalized_header(sheet.value(header_row, int(column)))
-            for column, expected in matches.items()
-        ):
-            candidates.append(layout)
-    if len(candidates) != 1:
-        if not candidates:
-            raise ValueError(
-                f"Die Spaltenstruktur in {source_sheet} passt zu keinem unterstützten Layout von {module.name}."
-            )
-        raise ValueError(f"Die Spaltenstruktur in {source_sheet} passt zu mehreren Layouts von {module.name}.")
-    resolved = {key: value for key, value in dpl.items() if key != "layouts"}
-    resolved.update(candidates[0])
-    return resolved
+def resolve_dpl_layout(module: AnlageModule, workbook: WorkbookData) -> DPLLayout:
+    """Compatibility wrapper for callers that do not use AnlageModule.resolve_layout yet."""
+    return module.resolve_layout(workbook)
 
 
 def export_module_package(code: str, custom_root: Path | None = None) -> tuple[str, bytes]:

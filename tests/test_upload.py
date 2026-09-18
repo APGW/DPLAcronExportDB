@@ -160,7 +160,7 @@ class UploadEndpointTest(unittest.TestCase):
         self.assertEqual("ok", payload["status"])
         self.assertEqual("sqlite", payload["backend"])
         self.assertEqual("PWK Lippestraße; Braukgraben", payload["project"])
-        self.assertEqual("3.3.0", payload["version"])
+        self.assertEqual("3.4.0", payload["version"])
 
     def test_module_api_only_lists_internal_supported_types(self) -> None:
         with urllib.request.urlopen(f"{self.base_url}/api/modules", timeout=10) as response:

@@ -2,6 +2,7 @@
   "schema": "dpl-acron.module/v1",
   "code": "rueb",
   "name": "RÜB-Liste – Regenwasserbehandlungsanlagen",
+  "select_label": "RÜB-Liste – RÜB / SKU / RRB / HRB / RKB",
   "version": "1.1.0",
   "description": "Gemeinsame RÜB-Liste für Regenwasserbehandlungsanlagen außer RÜ, darunter RÜB, SKU, RRB, HRB und RKB",
   "supported_types": ["RÜB", "SKU", "RRB", "HRB", "RKB", "weitere RWB"],
