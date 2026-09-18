@@ -160,12 +160,14 @@ class UploadEndpointTest(unittest.TestCase):
         self.assertEqual("ok", payload["status"])
         self.assertEqual("sqlite", payload["backend"])
         self.assertEqual("PWK Lippestraße; Braukgraben", payload["project"])
-        self.assertEqual("3.2.0", payload["version"])
+        self.assertEqual("3.3.0", payload["version"])
 
     def test_module_api_only_lists_internal_supported_types(self) -> None:
         with urllib.request.urlopen(f"{self.base_url}/api/modules", timeout=10) as response:
             payload = json.load(response)
         self.assertEqual(["pwk", "rue", "rueb"], [item["code"] for item in payload["items"]])
+        rueb = next(item for item in payload["items"] if item["code"] == "rueb")
+        self.assertEqual(["RÜB", "SKU", "RRB", "HRB", "RKB", "weitere RWB"], rueb["supportedTypes"])
         with self.assertRaises(urllib.error.HTTPError) as error:
             urllib.request.urlopen(f"{self.base_url}/api/modules/rue/export", timeout=10)
         self.assertEqual(404, error.exception.code)

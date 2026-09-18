@@ -10,8 +10,9 @@ from dpl_export.modules import (
     export_module_package,
     import_module_package,
     list_modules,
+    resolve_dpl_layout,
 )
-from dpl_export.xlsx_reader import Sheet, WorkbookData
+from dpl_export.xlsx_reader import Cell, Sheet, WorkbookData
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -42,6 +43,34 @@ class AnlageModuleTest(unittest.TestCase):
                 analog_sheet: Sheet(analog_sheet, {}),
             })
             self.assertEqual(expected, detect_module(workbook).code)
+
+    def test_rueb_module_covers_all_rainwater_treatment_types(self) -> None:
+        module = next(item for item in list_modules() if item.code == "rueb")
+        self.assertEqual(
+            ["RÜB", "SKU", "RRB", "HRB", "RKB", "weitere RWB"],
+            module.public_dict()["supportedTypes"],
+        )
+
+    def test_rueb_module_resolves_v71_and_legacy_column_layouts(self) -> None:
+        module = next(item for item in list_modules() if item.code == "rueb")
+
+        def workbook(headers: dict[int, str]) -> WorkbookData:
+            row = {column: Cell(value, None, 0, None) for column, value in headers.items()}
+            return WorkbookData({
+                "Info und Historie AnlagenDPL": Sheet("Info und Historie AnlagenDPL", {}),
+                "RWB Analogwerte": Sheet("RWB Analogwerte", {3: row}),
+            })
+
+        current = resolve_dpl_layout(module, workbook({
+            29: "PCS7 Variable", 31: "Soll archiviert werden?", 40: "Wertetyp in Acron",
+        }))
+        legacy = resolve_dpl_layout(module, workbook({
+            24: "PCS7 Variable", 26: "Soll archiviert werden?", 35: "Wertetyp in Acron",
+        }))
+        self.assertEqual(29, current["columns"]["pcs7_variable"])
+        self.assertEqual([0, 56], current["marker_columns"])
+        self.assertEqual(24, legacy["columns"]["pcs7_variable"])
+        self.assertEqual([0, 45], legacy["marker_columns"])
 
     def test_module_package_can_be_exported_and_hot_replaced(self) -> None:
         filename, content = export_module_package("rue")

@@ -6,7 +6,7 @@ from pathlib import Path
 
 
 APP_NAME = "DPL Acron Exportassistent"
-APP_VERSION = "3.2.0"
+APP_VERSION = "3.3.0"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 120

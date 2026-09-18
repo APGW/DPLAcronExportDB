@@ -565,9 +565,11 @@ function renderModules(modules) {
   state.modules = modules;
   const select = $("#dpl-module-select");
   const preferred = select.value || state.summary?.project?.module_code || modules[0]?.code || "";
-  select.innerHTML = modules.map((item) =>
-    `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name)} (${escapeHtml(item.code.toUpperCase())})</option>`
-  ).join("");
+  select.innerHTML = modules.map((item) => {
+    const types = Array.isArray(item.supportedTypes) ? item.supportedTypes : [];
+    const suffix = types.length > 1 ? ` (${types.join(", ")})` : "";
+    return `<option value="${escapeHtml(item.code)}">${escapeHtml(item.name + suffix)}</option>`;
+  }).join("");
   if (modules.some((item) => item.code === preferred)) select.value = preferred;
   select.disabled = modules.length === 0;
 }

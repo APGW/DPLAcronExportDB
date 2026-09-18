@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .database import DatabaseConnection, DatabaseTarget, connect, initialize_schema, transaction
-from .modules import detect_module, get_module
+from .modules import detect_module, get_module, resolve_dpl_layout
 from .xlsx_reader import Sheet, read_workbook, row_marker
 
 
@@ -314,7 +314,7 @@ def import_project(
                 f"Ausgewählt wurde {module.name}, die DPL entspricht jedoch {detected_module.name}. "
                 "Bitte den richtigen Anlagentyp auswählen."
             )
-        dpl = module.config["dpl"]
+        dpl = resolve_dpl_layout(module, workbook)
         metadata = workbook.sheet(dpl["metadata_sheet"])
         source_sheet = next(name for name in dpl["sheet_names"] if name in workbook.sheets)
         analog_values = workbook.sheet(source_sheet)

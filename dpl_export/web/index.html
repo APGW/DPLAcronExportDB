@@ -33,7 +33,7 @@
           <h1 id="upload-title">DPL hochladen und automatisch aufbereiten</h1>
           <p>Wählen Sie eine DPL im XLSX-Format. Das Programm übernimmt gelb markierte Datensätze sowie jeden Datensatz mit mindestens einer orange geänderten Zelle.</p>
           <ul class="upload-rules">
-            <li>Anlagentyp auswählen: <strong>PWK, RÜ oder RÜB</strong></li>
+            <li>Anlagentyp auswählen: <strong>PWK, RÜ oder RÜB-Liste für Regenwasserbehandlungsanlagen</strong></li>
             <li>Maximale Dateigröße: <strong>25 MB</strong></li>
             <li>Die Übernahme erfolgt <strong>vollständig oder gar nicht</strong></li>
           </ul>
@@ -44,7 +44,7 @@
             <select id="dpl-module-select" aria-describedby="dpl-module-help">
               <option value="">Anlagentypen werden geladen …</option>
             </select>
-            <small id="dpl-module-help">Die DPL wird vor der Übernahme gegen den ausgewählten Anlagentyp geprüft.</small>
+            <small id="dpl-module-help">RÜ bleibt eigenständig. Für RÜB, SKU, RRB, HRB, RKB und weitere Regenwasserbehandlungsanlagen die gemeinsame RÜB-Liste auswählen.</small>
           </label>
           <input class="sr-only" id="dpl-upload-input" type="file" accept=".xlsx" multiple>
           <label class="drop-zone" id="dpl-drop-zone" for="dpl-upload-input" tabindex="0">

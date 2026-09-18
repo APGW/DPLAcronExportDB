@@ -1,25 +1,43 @@
 {
   "schema": "dpl-acron.module/v1",
   "code": "rueb",
-  "name": "RÜB – Regenüberlaufbecken",
-  "version": "1.0.0",
-  "description": "Datenpunktlisten für Regenüberlaufbecken der kombinierten RÜB/SK-Struktur V7.0; SK ist noch nicht freigeschaltet",
+  "name": "RÜB-Liste – Regenwasserbehandlungsanlagen",
+  "version": "1.1.0",
+  "description": "Gemeinsame RÜB-Liste für Regenwasserbehandlungsanlagen außer RÜ, darunter RÜB, SKU, RRB, HRB und RKB",
+  "supported_types": ["RÜB", "SKU", "RRB", "HRB", "RKB", "weitere RWB"],
   "dpl": {
     "metadata_sheet": "Info und Historie AnlagenDPL",
     "sheet_names": ["RWB Analogwerte"],
     "header_row": 3,
     "first_data_row": 5,
-    "marker_columns": [0, 45],
+    "marker_columns": [0, 56],
+    "header_matches": {"29": "PCS7 Variable", "31": "archiviert", "40": "Wertetyp in Acron"},
     "metadata": {"project_name": [3, 2], "ba_number": [5, 2], "acron_prefix": [6, 2]},
     "columns": {
       "folder_level1": 0, "folder_level2": null, "number": 1, "class_name": 2,
-      "long_name": 3, "vg_short": [7, 4], "pcs7_variable": 24, "unit": 9,
-      "decimals": 10, "archive": 26, "cycle_seconds": 27, "delta1": 29,
-      "value_type": 35, "pval_handling": 36, "interval_comp": 37,
-      "period_comp": 37, "data_type": 38, "range_min": 42, "range_max": 43,
-      "acron_long": 33, "acron_short": 34, "comment": 44
-    }
+      "long_name": 3, "vg_short": [7, 4], "pcs7_variable": 29, "unit": 9,
+      "decimals": 10, "archive": 31, "cycle_seconds": 32, "delta1": 34,
+      "value_type": 40, "pval_handling": 41, "interval_comp": 42,
+      "period_comp": 42, "data_type": 43, "range_min": 47, "range_max": 48,
+      "acron_long": 38, "acron_short": 39, "comment": 49
+    },
+    "layouts": [
+      {
+        "name": "V7.0 / Bestandslayout",
+        "header_row": 3,
+        "first_data_row": 5,
+        "marker_columns": [0, 45],
+        "header_matches": {"24": "PCS7 Variable", "26": "archiviert", "35": "Wertetyp in Acron"},
+        "columns": {
+          "folder_level1": 0, "folder_level2": null, "number": 1, "class_name": 2,
+          "long_name": 3, "vg_short": [7, 4], "pcs7_variable": 24, "unit": 9,
+          "decimals": 10, "archive": 26, "cycle_seconds": 27, "delta1": 29,
+          "value_type": 35, "pval_handling": 36, "interval_comp": 37,
+          "period_comp": 37, "data_type": 38, "range_min": 42, "range_max": 43,
+          "acron_long": 33, "acron_short": 34, "comment": 44
+        }
+      }
+    ]
   },
   "automatic_formulas": []
 }
-

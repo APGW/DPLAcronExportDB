@@ -63,6 +63,8 @@ class DebianDeploymentTest(unittest.TestCase):
         page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
         application = (ROOT / "dpl_export" / "web" / "app.js").read_text(encoding="utf-8")
         self.assertIn("dpl-module-select", page)
+        self.assertIn("RÜB, SKU, RRB, HRB, RKB", page)
+        self.assertIn("supportedTypes", application)
         self.assertIn('"X-Anlage-Module": moduleCode', application)
         self.assertNotIn("module-upload-input", page)
         self.assertNotIn("Anlagenmodule verwalten", page)

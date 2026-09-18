@@ -12,16 +12,16 @@
   "updateable": true,
   "privileged": false,
   "interface_port": 8765,
-  "documentation": "https://dpl-acron.intern/docs/PROXMOX_CT.md",
-  "website": "https://dpl-acron.intern/",
-  "repository": "https://dpl-acron.intern/",
+  "documentation": "http://192.168.133.134:3000/axpgw/DPLAcronExportDB/raw/branch/main/dist/internal-repository/docs/PROXMOX_CT.md",
+  "website": "http://192.168.133.134:3000/axpgw/DPLAcronExportDB/raw/branch/main/dist/internal-repository/",
+  "repository": "http://192.168.133.134:3000/axpgw/DPLAcronExportDB/raw/branch/main/dist/internal-repository/",
   "architectures": [
     "amd64"
   ],
   "platforms": [
     "pve"
   ],
-  "logo": "https://dpl-acron.intern/assets/agw-logo.png",
+  "logo": "http://192.168.133.134:3000/axpgw/DPLAcronExportDB/raw/branch/main/dist/internal-repository/assets/agw-logo.png",
   "install_methods": [
     {
       "type": "default",

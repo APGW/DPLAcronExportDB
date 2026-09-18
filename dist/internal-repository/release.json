@@ -1,12 +1,12 @@
 {
   "application": "DPL Acron Exportassistent",
-  "version": "3.2.0",
-  "bundle": "releases/3.2.0/dpl-acron-debian13.tar.gz",
-  "bundle_sha256": "086daaf26ba34d0d275624082065d7d3fc744465e28126603176245242014aea",
-  "installer": "releases/3.2.0/proxmox-install-lxc.sh",
+  "version": "3.3.0",
+  "bundle": "releases/3.3.0/dpl-acron-debian13.tar.gz",
+  "bundle_sha256": "198d6bc420cf894d3d1abe4d4943849105a9d7e8506da2bed6f8df1185f3f198",
+  "installer": "releases/3.3.0/proxmox-install-lxc.sh",
   "installer_sha256": "25f502173b8655bf82b22966d66094d7ecaf1ee7cf6c0c36011a20beda110659",
   "community_script": "ct/dpl-acron.sh",
-  "community_script_sha256": "5459d3faddb718093a90c376a634c0811ebb1dd0702ba93aa3fa49c605e28af3",
+  "community_script_sha256": "d6aa9486059315a35b9465d0847debb5ce76a588731ff9f9ef049042fac069ff",
   "community_install": "install/dpl-acron-install.sh",
   "community_install_sha256": "c5f6fc1ed1593e716bf7bd88551416937881d6b6d9af5a81fab3fe1a73f07865"
 }

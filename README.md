@@ -51,8 +51,10 @@ oder gar nicht aktiviert. Es wird keine SQLite-Arbeits- oder Zwischenbank erzeug
 ## Austauschbare Anlagenmodule
 
 Die Importlogik ist nicht mehr auf `PWK_Analogwerte` fest verdrahtet. Mitgeliefert
-werden die Module `pwk`, `rue` und `rueb`; RRB und SKU sind bis zum Vorliegen
-geeigneter DPLs bewusst nicht aktiviert. Im Webinterface wählt der Benutzer vor
+werden die Module `pwk`, `rue` und `rueb`. `rueb` bildet die gemeinsame RÜB-Liste
+für alle Regenwasserbehandlungsanlagen außer RÜ ab, insbesondere RÜB, SKU, RRB,
+HRB und RKB. Es unterstützt sowohl das Bestandslayout als auch das erweiterte
+V7.1-Layout. Im Webinterface wählt der Benutzer vor
 dem Upload nur den Anlagentyp aus. Der Server prüft diese Auswahl gegen die
 Tabellenstruktur der DPL und speichert sie einschließlich Modulversion im aktiven
 Projekt.
@@ -80,7 +82,7 @@ innerhalb einer Transaktion ersetzt wird.
 
 - erforderliche Blätter: `Info und Historie AnlagenDPL` plus das Analogwertblatt des erkannten Moduls
 - unterstützte Analogwertblätter: `PWK_Analogwerte`, `RUE Analogwerte`, `RWB Analogwerte`
-- Anlagentyp: vor dem Upload auswählen; eine nicht zur DPL passende Auswahl wird abgewiesen
+- Anlagentyp: PWK, RÜ oder die gemeinsame RÜB-Liste für RÜB/SKU/RRB/HRB/RKB und weitere RWB
 - Auswahl: vollflächig gelbe Zeilen und jeder Datensatz mit mindestens einer orange geänderten Zelle
 - orange geänderte Zellen: gesonderte Kennzeichnung und Filter im Webinterface
 - Rechenwerte: automatische Summenformeln aus den tatsächlich ausgewählten Maschinenwerten
