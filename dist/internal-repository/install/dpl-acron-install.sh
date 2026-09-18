@@ -42,7 +42,7 @@ release_dir="$(mktemp -d)"
 trap 'rm -rf -- "$release_dir"' EXIT
 bundle="$release_dir/dpl-acron-debian13.tar.gz"
 
-msg_info "Lade und prüfe DPL Acron ${DPL_APP_VERSION}"
+msg_info "Lade und prüfe DPL2ACRON ${DPL_APP_VERSION}"
 curl "${curl_options[@]}" \
   --output "$bundle" \
   "${DPL_BASE_URL%/}/releases/${DPL_APP_VERSION}/dpl-acron-debian13.tar.gz"

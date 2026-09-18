@@ -3,18 +3,18 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>DPL Exportassistent</title>
+    <title>DPL2ACRON</title>
     <link rel="stylesheet" href="/styles.css">
   </head>
   <body>
     <a class="skip-link" href="#datapoint-workspace">Direkt zu den Datensätzen</a>
 
     <header class="topbar">
-      <a class="brand" href="#top" aria-label="DPL Exportassistent – Startseite">
+      <a class="brand" href="#top" aria-label="DPL2ACRON – Startseite">
         <img class="brand-logo" src="/assets/agw-logo.png" alt="A. Große-Wentrup GmbH">
         <span>
-          <strong>DPL Exportassistent</strong>
-          <small>Daten prüfen und sicher exportieren</small>
+          <strong class="brand-title">DPL2ACRON <span class="codex-watermark">Made with Codex</span></strong>
+          <small>DPL prüfen und ACRON-Exportdateien erzeugen</small>
         </span>
       </a>
       <div class="topbar-actions">
@@ -29,13 +29,13 @@
     <main id="top">
       <section class="upload-section" aria-labelledby="upload-title">
         <div class="upload-copy">
-          <p class="eyebrow">Neue Datenpunktliste</p>
-          <h1 id="upload-title">DPL hochladen und automatisch aufbereiten</h1>
-          <p>Wählen Sie eine DPL im XLSX-Format. Das Programm übernimmt gelb markierte Datensätze sowie jeden Datensatz mit mindestens einer orange geänderten Zelle.</p>
+          <p class="eyebrow">Schritt 1 · DPL importieren</p>
+          <h1 id="upload-title">DPL auswählen und importieren</h1>
+          <p>Wählen Sie eine DPL im XLSX-Format. Importiert werden vollständig gelb markierte Zeilen und Datensätze mit mindestens einer orange markierten Zelle.</p>
           <ul class="upload-rules">
-            <li>Anlagentyp auswählen: <strong>PWK, RÜ oder RÜB-Liste für Regenwasserbehandlungsanlagen</strong></li>
-            <li>Maximale Dateigröße: <strong>25 MB</strong></li>
-            <li>Die Übernahme erfolgt <strong>vollständig oder gar nicht</strong></li>
+            <li>Anlagentyp: <strong>PWK, RÜ oder RÜB-Liste</strong></li>
+            <li>Dateiformat und Größe: <strong>XLSX, maximal 25 MB</strong></li>
+            <li>Import: <strong>transaktional; vorhandene Daten bleiben bei Fehlern erhalten</strong></li>
           </ul>
         </div>
         <div class="upload-control">
@@ -44,16 +44,16 @@
             <select id="dpl-module-select" aria-describedby="dpl-module-help">
               <option value="">Anlagentypen werden geladen …</option>
             </select>
-            <small id="dpl-module-help">RÜ bleibt eigenständig. Für RÜB, SKU, RRB, HRB, RKB und weitere Regenwasserbehandlungsanlagen die gemeinsame RÜB-Liste auswählen.</small>
+            <small id="dpl-module-help">RÜ verwendet das Modul RÜ. RÜB, SKU, RRB, HRB, RKB und weitere Regenwasserbehandlungsanlagen verwenden die RÜB-Liste.</small>
           </label>
           <input class="sr-only" id="dpl-upload-input" type="file" accept=".xlsx" multiple>
           <label class="drop-zone" id="dpl-drop-zone" for="dpl-upload-input" tabindex="0">
             <span class="drop-zone-badge">Einzeln oder Batch</span>
             <span class="upload-file-icon" aria-hidden="true">XLSX</span>
             <strong>2. DPL-Dateien auswählen</strong>
-            <span>Eine oder mehrere Dateien hier ablegen, mit Strg+V einfügen oder anklicken</span>
+            <span>Dateien hier ablegen, mit Strg+V einfügen oder zur Auswahl anklicken</span>
           </label>
-          <p class="upload-alternative"><strong>Dateidialog hängt?</strong> XLSX-Datei im Explorer einmal kopieren und anschließend hier <kbd>Strg</kbd>+<kbd>V</kbd> drücken.</p>
+          <p class="upload-alternative"><strong>Alternative zum Dateidialog:</strong> XLSX-Datei im Explorer kopieren und hier mit <kbd>Strg</kbd>+<kbd>V</kbd> einfügen.</p>
           <div class="upload-selection" id="upload-selection" hidden>
             <div class="upload-queue-heading">
               <div class="upload-queue-summary">
@@ -65,7 +65,7 @@
             </div>
             <div class="upload-file-list" id="upload-file-list" aria-label="Abgelegte DPL-Dateien"></div>
             <div class="upload-queue-actions">
-              <small>Bei mehreren DPLs wählen Sie den nächsten Import aus. Der aktive Projektdatenstand wird jeweils vollständig ersetzt.</small>
+              <small>Bei mehreren Dateien den nächsten Import auswählen. Jeder erfolgreiche Import ersetzt den aktiven Projektdatenstand vollständig.</small>
               <button class="button button-primary upload-start-button" id="upload-start" type="button">
                 <span>DPL prüfen und übernehmen</span>
                 <small id="upload-start-filename">–</small>
@@ -74,7 +74,7 @@
           </div>
           <div class="upload-progress" id="upload-progress" hidden role="status" aria-live="polite">
             <span class="spinner" aria-hidden="true"></span>
-            <div><strong>DPL wird geprüft und eingelesen …</strong><span>Der aktuelle Stand bleibt erhalten, bis alle Prüfungen abgeschlossen sind.</span></div>
+            <div><strong>DPL wird geprüft und importiert …</strong><span>Der aktive Datenstand bleibt bis zum erfolgreichen Abschluss unverändert.</span></div>
           </div>
           <div class="upload-result" id="upload-result" hidden role="status" aria-live="polite"></div>
         </div>
@@ -93,7 +93,7 @@
           <div class="pcs7-content">
             <div class="pcs7-explanation">
               <h3>Variablen vor dem Export gegen PCS7 prüfen</h3>
-              <p>Laden Sie Parameter, Signale und Meldungen gemeinsam oder einzeln hoch. Der Parameterexport aktiviert die vollständige Prüfung; Signale und Meldungen ergänzen weitere Referenzen.</p>
+              <p>Parameter-, Signal- und Meldungsdateien können gemeinsam oder einzeln importiert werden. Der Parameterexport aktiviert die vollständige Referenzprüfung. Signal- und Meldungsdateien ergänzen den Abgleich.</p>
               <div class="pcs7-imports" id="pcs7-imports" aria-live="polite"></div>
             </div>
             <div class="pcs7-upload">
@@ -124,23 +124,23 @@
           <p id="project-meta" class="muted">Die Projektdaten werden vorbereitet.</p>
           <p><span class="module-chip" id="project-module">Anlagenmodul wird erkannt …</span></p>
         </div>
-        <a class="quiet-link" href="#quick-help">Wie funktioniert das?</a>
+        <a class="quiet-link" href="#quick-help">Arbeitsablauf anzeigen</a>
       </section>
 
       <section class="workflow" id="quick-help" aria-labelledby="workflow-title">
         <div class="workflow-heading">
           <div>
-            <p class="eyebrow">Schnellstart</p>
-            <h2 id="workflow-title">In drei Schritten zum fertigen Export</h2>
+            <p class="eyebrow">Arbeitsablauf</p>
+            <h2 id="workflow-title">DPL in drei Schritten exportieren</h2>
           </div>
-          <p>Gelb ausgewählte DPL-Zeilen und orange geänderte Zellen sind bereits erkannt. Sie müssen nur offene Punkte prüfen.</p>
+          <p>DPL importieren, offene Prüfpunkte bearbeiten und anschließend beide CSV-Dateien herunterladen.</p>
         </div>
 
         <ol class="workflow-steps">
           <li class="workflow-step is-complete" id="step-import">
             <span class="step-number" aria-hidden="true">1</span>
             <div>
-              <strong>DPL ist eingelesen</strong>
+              <strong>DPL importieren</strong>
               <span id="guide-source-state">Markierte Datensätze werden geladen …</span>
             </div>
             <span class="step-state">Erledigt</span>
@@ -148,7 +148,7 @@
           <li class="workflow-step" id="step-review">
             <span class="step-number" aria-hidden="true">2</span>
             <div>
-              <strong>Offene Punkte prüfen</strong>
+              <strong>Datensätze prüfen</strong>
               <span id="guide-review-state">Prüfstatus wird ermittelt …</span>
             </div>
             <button class="text-button" id="show-open-issues" type="button">Jetzt prüfen</button>
@@ -168,7 +168,7 @@
         <div class="review-icon" aria-hidden="true">!</div>
         <div>
           <strong id="review-title">Daten werden geprüft …</strong>
-          <p id="review-copy">Einen Augenblick bitte.</p>
+          <p id="review-copy">Prüfstatus wird ermittelt.</p>
         </div>
         <button class="button button-secondary" id="review-action" type="button">Offene Punkte anzeigen</button>
       </section>
@@ -178,11 +178,11 @@
           <div>
             <p class="eyebrow">Schritt 2</p>
             <h2 id="workspace-title">Datensätze prüfen</h2>
-            <p class="section-copy">Datensätze mit Handlungsbedarf stehen automatisch oben. Öffnen Sie einen Eintrag mit „Prüfen“.</p>
+            <p class="section-copy">Datensätze mit Fehlern oder Hinweisen werden zuerst angezeigt. Details können direkt in der jeweiligen Zeile geöffnet werden.</p>
           </div>
           <div class="summary-chips" aria-label="Datensatzübersicht">
             <span><strong id="stat-total">–</strong> markiert</span>
-            <span><strong id="stat-acron">–</strong> für Acron</span>
+            <span><strong id="stat-acron">–</strong> für ACRON</span>
             <span><strong id="stat-provider">–</strong> für Provider</span>
             <span class="session-edited-chip" id="session-edited-chip" title="Nur in dieser Browser-Sitzung"><strong id="stat-session-edited">0</strong> kürzlich bearbeitet</span>
           </div>
@@ -269,7 +269,7 @@
             <p class="eyebrow">Nachvollziehbarkeit</p>
             <h2 id="activity-title">Letzte Änderungen</h2>
           </div>
-          <p>Welche Werte wurden zuletzt geändert?</p>
+          <p>Protokoll der zuletzt gespeicherten Änderungen.</p>
         </div>
         <ol class="activity-list" id="activity-list">
           <li>Änderungsprotokoll wird geladen …</li>
@@ -289,11 +289,11 @@
           <article class="export-card">
             <div class="file-badge" aria-hidden="true">CSV</div>
             <div>
-              <p class="eyebrow">Acron-Import</p>
+              <p class="eyebrow">ACRON-Import</p>
               <h3 id="acron-filename">Projekt VG.csv</h3>
               <p><strong id="export-acron-count">–</strong> aktive Datensätze, einschließlich Hand- und Rechenwerte.</p>
             </div>
-            <a class="button button-primary export-link" data-export-kind="acron" href="/api/exports/acron" download>Acron CSV herunterladen</a>
+            <a class="button button-primary export-link" data-export-kind="acron" href="/api/exports/acron" download>ACRON-CSV herunterladen</a>
           </article>
           <article class="export-card">
             <div class="file-badge provider" aria-hidden="true">CSV</div>
@@ -305,7 +305,7 @@
             <a class="button button-dark export-link" data-export-kind="provider" href="/api/exports/provider" download>Provider CSV herunterladen</a>
           </article>
         </div>
-        <p class="export-note">Die Dateien werden beim Herunterladen aus dem aktuell gespeicherten Stand erzeugt.</p>
+        <p class="export-note">Jeder Download wird aus dem aktuell gespeicherten Datenstand erzeugt.</p>
       </section>
     </main>
 
@@ -351,23 +351,23 @@
             <div class="section-heading">
               <div>
                 <p class="eyebrow">Wichtig</p>
-                <h3 id="required-title">Acron-Exportdaten</h3>
-                <p>Prüfen Sie besonders hervorgehobene Felder. Ein Stern kennzeichnet Pflichtangaben.</p>
+                <h3 id="required-title">ACRON-Exportdaten</h3>
+                <p>Hervorgehobene Felder enthalten Prüfpunkte. Ein Stern kennzeichnet ein Pflichtfeld.</p>
               </div>
             </div>
             <div class="form-grid">
-              <label class="wide">Acron-Identifikation <span class="required-mark">*</span>
+              <label class="wide">ACRON-Identifikation <span class="required-mark">*</span>
                 <span class="field-help">Eindeutiger technischer Name des Datensatzes</span>
                 <input id="acron-identification" required>
               </label>
-              <label class="wide">Anzeigename in Acron <span class="required-mark">*</span>
+              <label class="wide">Anzeigename in ACRON <span class="required-mark">*</span>
                 <input id="acron-name" required>
               </label>
-              <label class="wide">Acron-Gruppe <span class="required-mark">*</span>
+              <label class="wide">ACRON-Gruppe <span class="required-mark">*</span>
                 <input id="acron-group" required>
               </label>
               <label class="wide">Formel oder Prozessdatenverknüpfung
-                <span class="field-help">Bei Onlinewerten die PCS7-Quelle, bei Rechenwerten die Acron-Formel</span>
+                <span class="field-help">Bei Onlinewerten die PCS7-Quelle, bei Rechenwerten die ACRON-Formel</span>
                 <input id="acron-formula">
               </label>
               <div class="field-group wide" role="group" aria-labelledby="range-label">
@@ -385,7 +385,7 @@
 
           <details class="advanced-panel" id="acron-advanced">
             <summary>
-              <span><strong>Weitere Acron-Einstellungen</strong><small>Typ, Zyklus und Verdichtung</small></span>
+              <span><strong>Weitere ACRON-Einstellungen</strong><small>Typ, Zyklus und Verdichtung</small></span>
               <span class="summary-action">Öffnen</span>
             </summary>
             <div class="panel-content form-grid">
@@ -419,7 +419,7 @@
               <label>Tagesverdichtung<select id="acron-daily-mode" class="aggregation-select"></select></label>
               <label>Monatsverdichtung<select id="acron-monthly-mode" class="aggregation-select"></select></label>
               <label>Jahresverdichtung<select id="acron-yearly-mode" class="aggregation-select"></select></label>
-              <label class="wide">Acron-Kommentar<textarea id="acron-comment" rows="2"></textarea></label>
+              <label class="wide">ACRON-Kommentar<textarea id="acron-comment" rows="2"></textarea></label>
             </div>
           </details>
 
@@ -430,7 +430,7 @@
             </summary>
             <div class="panel-content">
               <label class="switch-row">
-                <span><strong>In Provider-CSV aufnehmen</strong><small>Deaktivieren, wenn dieser Datensatz nur nach Acron gehört.</small></span>
+                <span><strong>In Provider-CSV aufnehmen</strong><small>Deaktivieren, wenn der Datensatz ausschließlich für ACRON bestimmt ist.</small></span>
                 <input id="provider-include" type="checkbox" role="switch">
               </label>
               <fieldset id="provider-fields" class="form-grid">
@@ -449,7 +449,7 @@
 
         <div class="dialog-foot">
           <label class="switch-row compact">
-            <span><strong>Im Acron-Export aktiv</strong><small>Deaktivierte Datensätze werden nicht exportiert.</small></span>
+            <span><strong>Im ACRON-Export aktiv</strong><small>Deaktivierte Datensätze sind nicht Bestandteil des Exports.</small></span>
             <input id="datapoint-enabled" type="checkbox" role="switch">
           </label>
           <div class="dialog-actions">

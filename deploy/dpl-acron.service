@@ -1,5 +1,5 @@
 [Unit]
-Description=DPL Acron Exportassistent
+Description=DPL2ACRON
 After=network.target mariadb.service
 Wants=mariadb.service
 

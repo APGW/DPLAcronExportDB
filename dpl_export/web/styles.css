@@ -55,6 +55,11 @@ button:focus-visible, a:focus-visible, input:focus-visible, select:focus-visible
 .brand strong, .brand small { display: block; }
 .brand strong { font-size: 18px; letter-spacing: -.035em; }
 .brand small { margin-top: 3px; color: var(--muted); font-size: 10px; letter-spacing: .04em; }
+.brand-title { display: flex !important; align-items: baseline; gap: 9px; }
+.codex-watermark {
+  color: var(--ink); opacity: .24; font-size: 8px; font-weight: 700;
+  letter-spacing: .09em; text-transform: uppercase; white-space: nowrap;
+}
 .header-status {
   display: inline-flex; align-items: center; gap: 8px; padding: 8px 12px;
   color: #4f5a5d; background: var(--soft); border: 1px solid var(--line);

@@ -27,7 +27,7 @@ def require_initialized_project(database: DatabaseTarget) -> None:
 
 
 def parser() -> argparse.ArgumentParser:
-    root = argparse.ArgumentParser(description="DPL in Acron- und WINCC60-Provider-Exporte überführen")
+    root = argparse.ArgumentParser(description="DPL prüfen und ACRON- sowie WINCC60-Provider-Exporte erzeugen")
     root.add_argument("--version", action="version", version=f"%(prog)s {APP_VERSION}")
     root.add_argument("--data-dir", type=Path, help="Verzeichnis für Uploads; sonst DPL_DATA_DIR")
     commands = root.add_subparsers(dest="command")

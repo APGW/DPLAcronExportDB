@@ -78,7 +78,7 @@ if pct status "$ctid" >/dev/null 2>&1; then
   existing_config="$(pct config "$ctid")"
   grep -Fqx "ostype: debian" <<< "$existing_config" || fail "CT $ctid ist kein Debian-Container."
   grep -Fqx "unprivileged: 1" <<< "$existing_config" || fail "CT $ctid ist nicht unprivilegiert."
-  grep -Eq '^tags: .*dpl-acron' <<< "$existing_config" || fail "CT $ctid wurde nicht als DPL-Acron-Container erkannt."
+  grep -Eq '^tags: .*dpl-acron' <<< "$existing_config" || fail "CT $ctid wurde nicht als DPL2ACRON-Container erkannt."
   existing_status="$(pct status "$ctid" | awk '{print $2}')"
   [[ "$existing_status" == "stopped" ]] || fail "CT $ctid muss zum sicheren Fortsetzen gestoppt sein."
   ct_exists=1

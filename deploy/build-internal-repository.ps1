@@ -56,11 +56,11 @@ $communityHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $communityPath).Ha
 $containerInstallerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $containerInstaller).Hash.ToLowerInvariant()
 
 $metadata = [ordered]@{
-    name = "DPL Acron Exportassistent"
+    name = "DPL2ACRON"
     slug = "dpl-acron"
     categories = @(8, 19, 25)
     date_created = "2026-09-07"
-    description = "Interner DPL-Prüf- und Acron-Exportservice mit lokaler MariaDB."
+    description = "Interner Dienst zur DPL-Prüfung und Erzeugung von ACRON-Exportdateien mit lokaler MariaDB."
     type = "ct"
     updateable = $true
     privileged = $false
@@ -95,7 +95,7 @@ New-Item -ItemType Directory -Force -Path (Join-Path $repositoryRoot "assets") |
 Copy-Item -LiteralPath (Join-Path $projectRoot "dpl_export\web\assets\agw-logo.png") -Destination (Join-Path $repositoryRoot "assets\agw-logo.png") -Force
 
 $manifest = [ordered]@{
-    application = "DPL Acron Exportassistent"
+    application = "DPL2ACRON"
     version = $appVersion
     bundle = "releases/$appVersion/dpl-acron-debian13.tar.gz"
     bundle_sha256 = $bundleHash

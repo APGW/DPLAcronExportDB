@@ -30,11 +30,17 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("session-edited-badge", styles)
 
     def test_web_interface_uses_the_company_inspired_visual_language(self) -> None:
+        page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
         styles = (ROOT / "dpl_export" / "web" / "styles.css").read_text(encoding="utf-8")
+        self.assertIn("DPL2ACRON", page)
+        self.assertIn("Made with Codex", page)
+        self.assertNotIn("DPL Exportassistent", page)
         self.assertIn("--navy: #09141e", styles)
         self.assertIn("--blue: #03ab98", styles)
         self.assertIn("font-family: Manrope", styles)
         self.assertIn("border-bottom: 6px solid var(--blue)", styles)
+        self.assertIn(".codex-watermark", styles)
+        self.assertIn("opacity: .24", styles)
 
     def test_pcs7_review_is_available_directly_in_each_table_row(self) -> None:
         application = (ROOT / "dpl_export" / "web" / "app.js").read_text(encoding="utf-8")

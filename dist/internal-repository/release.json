@@ -1,12 +1,12 @@
 {
-  "application": "DPL Acron Exportassistent",
-  "version": "3.4.0",
-  "bundle": "releases/3.4.0/dpl-acron-debian13.tar.gz",
-  "bundle_sha256": "c74f2e095eedc7ebd8e9868d5f381d8e663dbc3028c02102d2cee12389690669",
-  "installer": "releases/3.4.0/proxmox-install-lxc.sh",
-  "installer_sha256": "25f502173b8655bf82b22966d66094d7ecaf1ee7cf6c0c36011a20beda110659",
+  "application": "DPL2ACRON",
+  "version": "3.5.0",
+  "bundle": "releases/3.5.0/dpl-acron-debian13.tar.gz",
+  "bundle_sha256": "453aa41c51f3e0eff72010677335b6815df081f701487522fd341278b4d8a10d",
+  "installer": "releases/3.5.0/proxmox-install-lxc.sh",
+  "installer_sha256": "15ce8a12e78ac632f15f9bb59742b9d05e5d7cef80ed85487cb4652d91298b90",
   "community_script": "ct/dpl-acron.sh",
-  "community_script_sha256": "52082396fab27566ef4bd7d66a63bc239c088ad5b6b5dd41e1f04e329b288418",
+  "community_script_sha256": "46716eea8d47a7ab16a058f51cef4ae3e699e3160fcf57f6fd10e5d163940e12",
   "community_install": "install/dpl-acron-install.sh",
-  "community_install_sha256": "c5f6fc1ed1593e716bf7bd88551416937881d6b6d9af5a81fab3fe1a73f07865"
+  "community_install_sha256": "4b196f34c6bc0137c3ed590c28a46c259dc45139ca923436c412e090390a551e"
 }

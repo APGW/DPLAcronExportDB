@@ -1,8 +1,8 @@
-# DPL → Acron Export
+# DPL2ACRON
 
 Der Webdienst liest gelb ausgewählte Datensätze sowie Datensätze mit mindestens
 einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemeinsamen
-Korrektur bereit und erzeugt getrennte Acron- und
+Korrektur bereit und erzeugt getrennte ACRON- und
 WINCC60-Provider-Exporte.
 
 Die Tabellenansicht unterstützt Einzel- und Mehrfachauswahl. PCS7-Abweichungen
@@ -99,7 +99,7 @@ Stand aktiv.
 
 - `Plan/Baustein.Anschluss#Value` aus der DPL wird gegen die PCS7-Struktur geprüft
 - strukturierte PCS7-Anschlüsse wie `.Value` werden korrekt zugeordnet
-- DPL-Quelle, Acron-Formel und Provider-Variablenname werden auf dieselbe Referenz geprüft
+- DPL-Quelle, ACRON-Formel und Provider-Variablenname werden auf dieselbe Referenz geprüft
 - konkrete Datentypen werden zwischen DPL und PCS7 verglichen
 - fehlende Pläne, Bausteine und Anschlüsse erscheinen als markierte Fehler
 - die DPL ist der führende Filter: zusätzliche PCS7-Referenzen außerhalb der DPL erzeugen keine Meldung
@@ -120,12 +120,12 @@ Die Oberfläche erzeugt die Dateinamen dynamisch aus der Projektbezeichnung:
 - `<Projektbezeichnung> VG.csv`
 - `<Projektbezeichnung> PV.csv`
 
-Auch die Acron- und Provider-Gruppen werden bei jedem DPL-Import auf die aktuelle
+Auch die ACRON- und Provider-Gruppen werden bei jedem DPL-Import auf die aktuelle
 Projektbezeichnung umgestellt.
 
-Der Acron-Export enthält alle aktivierten Datensätze. Der Provider-Export
+Der ACRON-Export enthält alle aktivierten Datensätze. Der Provider-Export
 enthält ausschließlich aktivierte Onlinewerte mit PCS7-Quelle. Hand- und
-Rechenwerte bleiben im Acron-Projekt.
+Rechenwerte bleiben im ACRON-Projekt.
 
 Kommandozeile:
 

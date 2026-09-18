@@ -8,7 +8,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from dpl_export import __version__
-from dpl_export.runtime import APP_VERSION, RuntimePaths, request_timeout_seconds
+from dpl_export.runtime import APP_NAME, APP_VERSION, RuntimePaths, request_timeout_seconds
 
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -16,7 +16,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 class RuntimeConfigurationTest(unittest.TestCase):
     def test_public_and_runtime_versions_are_identical(self) -> None:
-        self.assertEqual("3.4.0", APP_VERSION)
+        self.assertEqual("DPL2ACRON", APP_NAME)
+        self.assertEqual("3.5.0", APP_VERSION)
         self.assertEqual(APP_VERSION, __version__)
 
     def test_request_timeout_is_bounded(self) -> None:

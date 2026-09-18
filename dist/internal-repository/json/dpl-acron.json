@@ -1,5 +1,5 @@
 {
-  "name": "DPL Acron Exportassistent",
+  "name": "DPL2ACRON",
   "slug": "dpl-acron",
   "categories": [
     8,
@@ -7,7 +7,7 @@
     25
   ],
   "date_created": "2026-09-07",
-  "description": "Interner DPL-Prüf- und Acron-Exportservice mit lokaler MariaDB.",
+  "description": "Interner Dienst zur DPL-Prüfung und Erzeugung von ACRON-Exportdateien mit lokaler MariaDB.",
   "type": "ct",
   "updateable": true,
   "privileged": false,

@@ -5,8 +5,8 @@ from dataclasses import dataclass
 from pathlib import Path
 
 
-APP_NAME = "DPL Acron Exportassistent"
-APP_VERSION = "3.4.0"
+APP_NAME = "DPL2ACRON"
+APP_VERSION = "3.5.0"
 DEFAULT_HOST = "127.0.0.1"
 DEFAULT_PORT = 8765
 DEFAULT_REQUEST_TIMEOUT_SECONDS = 120

@@ -52,14 +52,14 @@ function update_script() {
   check_container_storage
   check_container_resources
   [[ -f /opt/dpl-acron/app.py ]] || {
-    msg_error "Keine DPL-Acron-Installation gefunden."
+    msg_error "Keine DPL2ACRON-Installation gefunden."
     exit 1
   }
 
   local update_dir update_bundle
   update_dir="$(mktemp -d)"
   update_bundle="$update_dir/dpl-acron-debian13.tar.gz"
-  msg_info "Lade und prüfe DPL Acron ${DPL_APP_VERSION}"
+  msg_info "Lade und prüfe DPL2ACRON ${DPL_APP_VERSION}"
   if [[ "$DPL_BASE_URL" == https://* ]]; then
     curl -fsSL --proto '=https' --tlsv1.2 \
       --output "$update_bundle" \
@@ -78,7 +78,7 @@ function update_script() {
   tar -xzf "$update_bundle" -C "$update_dir/source"
   bash "$update_dir/source/deploy/install-debian13.sh"
   rm -rf -- "$update_dir"
-  msg_ok "DPL Acron ${DPL_APP_VERSION} aktualisiert"
+  msg_ok "DPL2ACRON ${DPL_APP_VERSION} aktualisiert"
   exit 0
 }
 

@@ -121,7 +121,7 @@ function setExportAvailability(blocked) {
     if (blocked) {
       link.setAttribute("aria-disabled", "true");
       link.setAttribute("tabindex", "-1");
-      link.title = "Beheben Sie zuerst die Fehler in den Datensätzen.";
+      link.title = "Export gesperrt: Datensatzfehler korrigieren.";
     } else {
       link.removeAttribute("aria-disabled");
       link.removeAttribute("tabindex");
@@ -165,8 +165,10 @@ function renderSummary(summary) {
     header.classList.add("has-error");
     header.lastElementChild.textContent = `${issues.error} Fehler blockieren den Export`;
     banner.classList.add("is-error");
-    text("#review-title", `${issues.error} Fehler müssen korrigiert werden`);
-    text("#review-copy", `Zusätzlich gibt es ${issues.warning} fachliche Hinweise. Öffnen Sie die betroffenen Datensätze.`);
+    text("#review-title", `${issues.error} Fehler blockieren den Export`);
+    text("#review-copy", issues.warning
+      ? `${issues.warning} zusätzliche Hinweise sind offen. Betroffene Datensätze öffnen und prüfen.`
+      : "Keine zusätzlichen Hinweise vorhanden.");
     text("#guide-review-state", `${issues.error} Fehler und ${issues.warning} Hinweise sind offen.`);
     text("#guide-export-state", "Der Download wird nach der Fehlerkorrektur freigegeben.");
     text("#export-readiness", `${issues.error} Fehler – Export gesperrt`);
@@ -179,9 +181,9 @@ function renderSummary(summary) {
   } else if (issues.warning) {
     header.classList.add("has-warning");
     header.lastElementChild.textContent = `${issues.warning} Hinweise offen`;
-    text("#review-title", `${issues.warning} fachliche Hinweise sollten geprüft werden`);
-    text("#review-copy", "Der Export ist bereits möglich. Für einen verlässlichen Datenstand sollten Sie die Hinweise vorher bearbeiten.");
-    text("#guide-review-state", `${issues.warning} Hinweise warten auf Ihre Prüfung.`);
+    text("#review-title", `${issues.warning} fachliche Hinweise sind offen`);
+    text("#review-copy", "Der Export ist möglich. Hinweise vor dem Download prüfen.");
+    text("#guide-review-state", `${issues.warning} Hinweise sind offen.`);
     text("#guide-export-state", "Beide Dateien sind verfügbar; die Hinweise bleiben sichtbar.");
     text("#export-readiness", `Export möglich · ${issues.warning} Hinweise offen`);
     $("#review-action").hidden = false;
@@ -194,7 +196,7 @@ function renderSummary(summary) {
     header.lastElementChild.textContent = "Alle Datensätze sind bereit";
     banner.classList.add("is-ready");
     text("#review-title", "Alle Datensätze sind für den Export bereit");
-    text("#review-copy", `${counts.enabled} Acron- und ${counts.provider} Provider-Datensätze wurden geprüft.`);
+    text("#review-copy", `${counts.enabled} ACRON- und ${counts.provider} Provider-Datensätze sind geprüft.`);
     text("#guide-review-state", "Keine Fehler oder fachlichen Hinweise offen.");
     text("#guide-export-state", "Beide Exportdateien können jetzt heruntergeladen werden.");
     text("#export-readiness", "Bereit zum Herunterladen");
@@ -217,8 +219,8 @@ function renderSummary(summary) {
 
 const auditFieldLabels = {
   enabled: "Exportstatus",
-  identification: "Acron-Identifikation",
-  name: "Acron-Anzeigename",
+  identification: "ACRON-Identifikation",
+  name: "ACRON-Anzeigename",
   group: "Gruppe",
   formula: "Formel / Prozessdatenverknüpfung",
   pvalFrom: "Messbereich von",
@@ -267,7 +269,7 @@ function renderAudit(items) {
 
 function statusLabel(level, count = 0) {
   if (level === "error") return `<span class="status error">Korrigieren${count > 1 ? ` (${count})` : ""}</span>`;
-  if (level === "warning") return `<span class="status warning">Bitte prüfen${count > 1 ? ` (${count})` : ""}</span>`;
+  if (level === "warning") return `<span class="status warning">Prüfen${count > 1 ? ` (${count})` : ""}</span>`;
   if (level === "info") return '<span class="status info">Hinweis</span>';
   return '<span class="status">Bereit</span>';
 }
@@ -322,10 +324,10 @@ function renderRows(items) {
             <div class="type-cell"><i class="marker ${escapeHtml(item.marker_color)}" title="${markerName}"></i><span class="tag">${escapeHtml(item.source_value_type)}</span>${orangeChanged ? '<span class="orange-change-badge">Orange Zelle geändert</span>' : ""}</div>
           </td>
           <td data-label="Exportziel">
-            <span class="destination"><strong>${provider ? "Acron + Provider" : "Nur Acron"}</strong>${escapeHtml(item.source_pcs7_variable || "Acron-interner Wert")}</span>
+            <span class="destination"><strong>${provider ? "ACRON + Provider" : "Nur ACRON"}</strong>${escapeHtml(item.source_pcs7_variable || "ACRON-interner Wert")}</span>
           </td>
           <td data-label="Aktiv">
-            <label class="row-toggle"><input class="row-enabled" type="checkbox" ${item.enabled ? "checked" : ""} aria-label="${escapeHtml(item.source_long_name)} im Acron-Export aktiv"> Ja</label>
+            <label class="row-toggle"><input class="row-enabled" type="checkbox" ${item.enabled ? "checked" : ""} aria-label="${escapeHtml(item.source_long_name)} im ACRON-Export aktiv"> Ja</label>
           </td>
           <td data-label="Aktion">
             <div class="row-actions">
@@ -374,7 +376,7 @@ function renderRows(items) {
           event.target.checked ? "Datensatz aktiviert" : "Datensatz deaktiviert",
           "enabled",
         );
-        showToast(event.target.checked ? "Datensatz für Acron aktiviert." : "Datensatz vom Acron-Export ausgeschlossen.");
+        showToast(event.target.checked ? "Datensatz für ACRON aktiviert." : "Datensatz vom ACRON-Export ausgeschlossen.");
         await reload();
       } catch (error) {
         event.target.checked = !event.target.checked;
@@ -578,12 +580,12 @@ function updateModuleSelectionContext() {
   const selected = state.modules.find((item) => item.code === select.value);
   select.dataset.module = selected?.code || "";
   if (!selected) {
-    text("#dpl-module-help", "Es ist kein Anlagenmodul verfügbar.");
+    text("#dpl-module-help", "Kein Anlagenmodul verfügbar.");
     return;
   }
   const types = Array.isArray(selected.supportedTypes) ? selected.supportedTypes.join(", ") : "";
-  const layoutInfo = Number(selected.layoutCount) > 1 ? ` ${selected.layoutCount} DPL-Layouts werden automatisch erkannt.` : "";
-  text("#dpl-module-help", `${selected.description}${types ? ` Unterstützte Anlagentypen: ${types}.` : ""}${layoutInfo}`);
+  const layoutInfo = Number(selected.layoutCount) > 1 ? ` Layouts: ${selected.layoutCount}; automatische Erkennung.` : "";
+  text("#dpl-module-help", `${selected.description}${types ? ` Anlagentypen: ${types}.` : ""}${layoutInfo}`);
 }
 
 async function reload() {
@@ -630,7 +632,7 @@ function renderPCS7Summary(pcs7) {
   const list = $("#pcs7-imports");
   list.innerHTML = imports.length
     ? imports.map((item) => `<div class="pcs7-import-card"><span>${escapeHtml(item.kind_label)}</span><strong>${escapeHtml(item.source_filename)}</strong><small>${item.reference_count} Referenzen</small></div>`).join("")
-    : '<p class="pcs7-empty">Keine PCS7-Dateien hinterlegt. Die DPL kann weiterhin ohne diese optionale Prüfung exportiert werden.</p>';
+    : '<p class="pcs7-empty">Keine PCS7-Dateien importiert. Der DPL-Export ist ohne diesen optionalen Abgleich möglich.</p>';
   if (pcs7.active) {
     text("#pcs7-summary-text", `${pcs7.confirmed} automatisch bestätigt · ${pcs7.reviewed || 0} manuell geprüft · ${pcs7.mismatches} offen`);
     text("#pcs7-summary-state", pcs7.mismatches ? `${pcs7.mismatches} Abweichungen` : "Prüfung aktiv");
@@ -656,10 +658,10 @@ function renderEditorIssues(issues) {
   const actionable = issues.filter((issue) => ["error", "warning"].includes(issue.level));
   if (!actionable.length) {
     panel.classList.add("is-ready");
-    panel.innerHTML = "<strong>Dieser Datensatz ist bereit.</strong><p>Es gibt keine Pflichtkorrekturen. Technische Details können Sie bei Bedarf öffnen.</p>";
+    panel.innerHTML = "<strong>Datensatz ist bereit.</strong><p>Keine Pflichtkorrekturen vorhanden. Technische Einstellungen sind optional.</p>";
   } else {
     if (actionable.some((issue) => issue.level === "error")) panel.classList.add("is-error");
-    panel.innerHTML = `<strong>${actionable.length === 1 ? "Bitte prüfen Sie diesen Punkt:" : `Bitte prüfen Sie diese ${actionable.length} Punkte:`}</strong><ul>${actionable.map((issue) => `<li>${escapeHtml(issue.message)}</li>`).join("")}</ul>`;
+    panel.innerHTML = `<strong>${actionable.length === 1 ? "Prüfpunkt:" : `${actionable.length} Prüfpunkte:`}</strong><ul>${actionable.map((issue) => `<li>${escapeHtml(issue.message)}</li>`).join("")}</ul>`;
   }
 
   issues.forEach((issue) => {
@@ -678,11 +680,11 @@ function renderEditorConflict(current) {
   panel.className = "issue-panel is-conflict";
   panel.innerHTML = `
     <strong>Dieser Datensatz wurde zwischenzeitlich von einer anderen Person geändert.</strong>
-    <p>Ihre Eingaben wurden nicht überschrieben und auch nicht gespeichert. Laden Sie den aktuellen Stand, bevor Sie erneut bearbeiten.</p>
+    <p>Lokale Eingaben wurden weder überschrieben noch gespeichert. Vor der weiteren Bearbeitung den aktuellen Stand laden.</p>
     <button class="button button-secondary conflict-reload" type="button">Aktuellen Stand laden</button>`;
   panel.querySelector(".conflict-reload").addEventListener("click", () => {
     populateEditor(current);
-    showToast("Der aktuelle Datenstand wurde geladen. Ihre bisherigen Eingaben wurden verworfen.");
+    showToast("Aktueller Datenstand geladen. Lokale Eingaben verworfen.");
   });
 }
 
@@ -699,7 +701,7 @@ function populateEditor(item) {
   text("#editor-subtitle", `DPL-Nr. ${item.source_number} · ${item.marker_color === "yellow" ? "gelb ausgewählt" : "orange markiert"}${item.has_orange_changes ? " · orange Zelle geändert" : ""} · ${item.source_value_type}`);
   text("#source-long", item.source_long_name);
   text("#source-short", item.source_vg_short);
-  text("#source-pcs7", item.source_pcs7_variable || "Acron-interner Wert");
+  text("#source-pcs7", item.source_pcs7_variable || "ACRON-interner Wert");
   text("#source-unit", `${item.source_unit || "–"} / ${item.source_decimals ?? "0"}`);
   text("#source-position", `${item.source_sheet || "PWK_Analogwerte"}, Zeile ${item.source_row}`);
 
@@ -743,7 +745,7 @@ function populateEditor(item) {
     : (item.issues || []).some((issue) => issue.level === "warning") ? "warning"
       : (item.issues || []).some((issue) => issue.level === "info") ? "info" : "ok";
   editorStatus.className = `status ${level === "ok" ? "" : level}`;
-  editorStatus.textContent = level === "error" ? "Korrektur nötig" : level === "warning" ? "Bitte prüfen" : level === "info" ? "Hinweis" : "Bereit";
+  editorStatus.textContent = level === "error" ? "Korrektur erforderlich" : level === "warning" ? "Prüfung erforderlich" : level === "info" ? "Hinweis" : "Bereit";
 
   state.initialPayload = JSON.stringify(editorPayload());
   updateDirtyState();
@@ -884,7 +886,7 @@ async function saveEditor(event) {
     const stillOpen = (updated.issues || []).some((issue) => ["error", "warning"].includes(issue.level));
     if (stillOpen) {
       populateEditor(updated);
-      showToast("Gespeichert. Bitte prüfen Sie die verbleibenden Hinweise.");
+      showToast("Gespeichert. Weitere Hinweise sind offen.");
       await reload();
     } else {
       state.initialPayload = JSON.stringify(editorPayload());
@@ -897,7 +899,7 @@ async function saveEditor(event) {
   } catch (error) {
     if (error.status === 409 && error.payload.current) {
       renderEditorConflict(error.payload.current);
-      showToast("Speichern gestoppt: Eine andere Person war schneller.", true);
+      showToast("Speichern abgebrochen: Der Datensatz wurde zwischenzeitlich geändert.", true);
     } else {
       showToast(error.message, true);
     }
@@ -1002,9 +1004,9 @@ function selectUploadFiles(fileList) {
   renderUploadQueue();
   const rejected = files.length - valid.length;
   if (rejected) {
-    showUploadResult(`${rejected} Datei(en) wurden übersprungen. Zulässig sind ausschließlich XLSX-Dateien bis 25 MB.`, true);
+    showUploadResult(`${rejected} ${rejected === 1 ? "Datei wurde" : "Dateien wurden"} übersprungen. Zulässig: XLSX, maximal 25 MB.`, true);
   } else if (!additions.length) {
-    showUploadResult("Diese Datei(en) befinden sich bereits in der Upload-Liste.", true);
+    showUploadResult("Die ausgewählten Dateien sind bereits in der Importliste enthalten.", true);
   }
 }
 
@@ -1016,7 +1018,7 @@ function pasteUploadFile(event) {
   selectUploadFiles(files);
   const added = state.uploadFiles.length - before;
   if (added) {
-    showToast(`${added} DPL-Datei(en) wurden aus der Zwischenablage übernommen.`);
+    showToast(`${added} ${added === 1 ? "DPL-Datei wurde" : "DPL-Dateien wurden"} aus der Zwischenablage übernommen.`);
     $("#upload-selection").scrollIntoView({ behavior: "smooth", block: "nearest" });
   }
 }
@@ -1027,11 +1029,11 @@ async function uploadDpl() {
   const moduleCode = $("#dpl-module-select").value;
   const selectedModule = state.modules.find((item) => item.code === moduleCode);
   if (!selectedModule) {
-    showUploadResult("Bitte wählen Sie zuerst einen Anlagentyp aus.", true);
+    showUploadResult("Anlagentyp auswählen.", true);
     return;
   }
   const confirmed = window.confirm(
-    `„${file.name}“ als ${selectedModule.name}-DPL übernehmen?\n\nDie Übernahme erfolgt transaktional. Geöffnete ältere Datensätze müssen danach neu geladen werden.`
+    `„${file.name}“ als ${selectedModule.name}-DPL importieren?\n\nEin erfolgreicher Import ersetzt den aktiven Projektdatenstand. Bereits geöffnete Datensätze anschließend neu laden.`
   );
   if (!confirmed) return;
 
@@ -1065,12 +1067,12 @@ async function uploadDpl() {
       ? " Der neue Datenstand wurde vollständig und transaktional in MariaDB aktiviert."
       : "";
     showUploadResult(
-      `Import erfolgreich (${result.module_name || selectedModule.name}): ${result.selected} markierte Datensätze, davon ${result.provider} für den Provider-Export.${backupNote}`
+      `Import abgeschlossen (${result.module_name || selectedModule.name}): ${result.selected} markierte Datensätze; ${result.provider} Datensätze im Provider-Export.${backupNote}`
     );
     $("#project-name").scrollIntoView({ behavior: "smooth", block: "center" });
   } catch (error) {
     $("#upload-selection").hidden = false;
-    showUploadResult(`Die DPL wurde nicht übernommen: ${error.message}`, true);
+    showUploadResult(`Import abgebrochen: ${error.message}`, true);
   } finally {
     button.disabled = false;
     $("#upload-progress").hidden = true;
@@ -1130,7 +1132,7 @@ async function uploadPCS7Files() {
     showPCS7Result(`PCS7-Prüfung aktualisiert: ${imported.join(" · ")}. Unstimmigkeiten sind in der Datensatzliste markiert.`);
   } catch (error) {
     $("#pcs7-selection").hidden = false;
-    showPCS7Result(`PCS7-Datei konnte nicht übernommen werden: ${error.message}`, true);
+    showPCS7Result(`PCS7-Import abgebrochen: ${error.message}`, true);
     await reload().catch(() => {});
   } finally {
     button.disabled = false;
@@ -1239,11 +1241,11 @@ document.addEventListener("DOMContentLoaded", async () => {
     link.addEventListener("click", (event) => {
       if (link.getAttribute("aria-disabled") === "true") {
         event.preventDefault();
-        showToast("Der Export ist gesperrt. Beheben Sie zuerst die Fehler.", true);
+        showToast("Export gesperrt: Datensatzfehler korrigieren.", true);
         focusAttention();
         return;
       }
-      showToast("Die aktuelle Exportdatei wird erstellt.");
+      showToast("Exportdatei wird erstellt.");
     });
   });
 

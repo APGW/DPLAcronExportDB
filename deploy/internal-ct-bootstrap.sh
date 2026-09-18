@@ -51,7 +51,7 @@ installer_file="$work_dir/proxmox-install-lxc.sh"
 bundle_file="$work_dir/dpl-acron-debian13.tar.gz"
 release_url="$base_url/releases/$app_version"
 
-echo "Lade DPL Acron Exportassistent $app_version vom internen Repository ..."
+echo "Lade DPL2ACRON $app_version vom internen Repository ..."
 curl "${curl_options[@]}" --output "$installer_file" "$release_url/proxmox-install-lxc.sh"
 curl "${curl_options[@]}" --output "$bundle_file" "$release_url/dpl-acron-debian13.tar.gz"
 

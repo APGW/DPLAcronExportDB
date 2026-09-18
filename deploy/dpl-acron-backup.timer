@@ -1,5 +1,5 @@
 [Unit]
-Description=Tägliche MariaDB-Sicherung des DPL Acron Exportassistenten
+Description=Tägliche MariaDB-Sicherung von DPL2ACRON
 
 [Timer]
 OnCalendar=*-*-* 02:15:00

@@ -24,6 +24,7 @@ from .upload import MAX_UPLOAD_BYTES, import_uploaded_dpl
 from .pcs7 import import_pcs7_export
 from .modules import list_modules
 from .runtime import (
+    APP_NAME,
     BUNDLED_PATHS,
     DEFAULT_REQUEST_TIMEOUT_SECONDS,
     RuntimePaths,
@@ -309,7 +310,7 @@ def serve(
         },
     )
     server = DPLHTTPServer((host, port), handler)
-    LOGGER.info("DPL Acron Export %s läuft auf http://%s:%s", __version__, host, port)
+    LOGGER.info("%s %s läuft auf http://%s:%s", APP_NAME, __version__, host, port)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

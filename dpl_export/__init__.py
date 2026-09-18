@@ -1,4 +1,4 @@
-"""DPL to Acron conversion service."""
+"""DPL2ACRON application package."""
 
 from .runtime import APP_VERSION
 

@@ -1,5 +1,5 @@
 [Unit]
-Description=MariaDB-Sicherung des DPL Acron Exportassistenten
+Description=MariaDB-Sicherung von DPL2ACRON
 After=mariadb.service
 Requires=mariadb.service
 
