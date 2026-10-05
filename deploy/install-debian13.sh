@@ -72,7 +72,6 @@ required_files=(
   "deploy/dpl-acron-backup.timer"
   "deploy/backup-mariadb.sh"
   "deploy/nginx-dpl-acron.conf.example"
-  "deploy/proxmox-create-ct.sh.example"
   "deploy/proxmox-install-lxc.sh"
 )
 for relative_path in "${required_files[@]}"; do

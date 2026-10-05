@@ -156,7 +156,7 @@ curl http://127.0.0.1:8765/api/health
 Erwartete Antwort:
 
 ```json
-{"status":"ok","backend":"mariadb","project":"PWK …","version":"3.2.0"}
+{"status":"ok","backend":"mariadb","project":"PWK …","version":"3.6.0"}
 ```
 
 Wichtige Pfade:
