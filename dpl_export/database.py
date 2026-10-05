@@ -144,6 +144,15 @@ def _sqlite_migrations(connection: DatabaseConnection) -> None:
         connection.execute("ALTER TABLE projects ADD COLUMN module_code TEXT NOT NULL DEFAULT 'pwk'")
     if "module_version" not in _sqlite_columns(connection, "projects"):
         connection.execute("ALTER TABLE projects ADD COLUMN module_version TEXT NOT NULL DEFAULT '1.0.0'")
+    if "logical_key" not in _sqlite_columns(connection, "projects"):
+        connection.execute("ALTER TABLE projects ADD COLUMN logical_key TEXT NOT NULL DEFAULT ''")
+    if "version_number" not in _sqlite_columns(connection, "projects"):
+        connection.execute("ALTER TABLE projects ADD COLUMN version_number INTEGER NOT NULL DEFAULT 1")
+    if "is_current" not in _sqlite_columns(connection, "projects"):
+        connection.execute("ALTER TABLE projects ADD COLUMN is_current INTEGER NOT NULL DEFAULT 1")
+    if "read_only" not in _sqlite_columns(connection, "projects"):
+        connection.execute("ALTER TABLE projects ADD COLUMN read_only INTEGER NOT NULL DEFAULT 0")
+    connection.execute("UPDATE projects SET logical_key = code WHERE logical_key = ''")
     if "module_config_json" not in _sqlite_columns(connection, "imports"):
         connection.execute("ALTER TABLE imports ADD COLUMN module_config_json TEXT NOT NULL DEFAULT '{}'")
     if "has_orange_changes" not in _sqlite_columns(connection, "datapoints"):
@@ -187,6 +196,17 @@ def _sqlite_migrations(connection: DatabaseConnection) -> None:
     else:
         connection.execute("DROP TABLE IF EXISTS sessions")
         connection.execute("DROP TABLE IF EXISTS users")
+    if "project_id" not in _sqlite_columns(connection, "audit_log"):
+        connection.execute("ALTER TABLE audit_log ADD COLUMN project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE")
+        connection.execute(
+            """
+            UPDATE audit_log
+            SET project_id = (SELECT project_id FROM datapoints WHERE datapoints.id = audit_log.datapoint_id)
+            WHERE datapoint_id IS NOT NULL
+            """
+        )
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_projects_logical_version ON projects(logical_key, version_number)")
+    connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(project_id, changed_at)")
     connection.execute("DROP VIEW IF EXISTS v_datapoint_editor")
     connection.execute("CREATE VIEW v_datapoint_editor AS " + VIEW_PATH.read_text(encoding="utf-8"))
     connection.commit()
@@ -201,6 +221,19 @@ def _mariadb_migrations(connection: DatabaseConnection) -> None:
         "ALTER TABLE projects ADD COLUMN IF NOT EXISTS "
         "module_version VARCHAR(50) NOT NULL DEFAULT '1.0.0'"
     )
+    connection.execute(
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS logical_key VARCHAR(100) NOT NULL DEFAULT ''"
+    )
+    connection.execute(
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS version_number INT UNSIGNED NOT NULL DEFAULT 1"
+    )
+    connection.execute(
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS is_current TINYINT(1) NOT NULL DEFAULT 1"
+    )
+    connection.execute(
+        "ALTER TABLE projects ADD COLUMN IF NOT EXISTS read_only TINYINT(1) NOT NULL DEFAULT 0"
+    )
+    connection.execute("UPDATE projects SET logical_key = code WHERE logical_key = ''")
     connection.execute(
         "ALTER TABLE imports ADD COLUMN IF NOT EXISTS module_config_json LONGTEXT NULL"
     )
@@ -242,6 +275,23 @@ def _mariadb_migrations(connection: DatabaseConnection) -> None:
     ).fetchall()
     if columns:
         connection.execute("ALTER TABLE audit_log DROP COLUMN changed_by_user_id")
+    connection.execute(
+        "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS project_id BIGINT UNSIGNED NULL"
+    )
+    connection.execute(
+        """
+        UPDATE audit_log a
+        JOIN datapoints d ON d.id = a.datapoint_id
+        SET a.project_id = d.project_id
+        WHERE a.project_id IS NULL
+        """
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_projects_logical_version ON projects(logical_key, version_number)"
+    )
+    connection.execute(
+        "CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(project_id, changed_at)"
+    )
     connection.execute("DROP TABLE IF EXISTS sessions")
     connection.execute("DROP TABLE IF EXISTS users")
     connection.execute("CREATE OR REPLACE VIEW v_datapoint_editor AS " + VIEW_PATH.read_text(encoding="utf-8"))
@@ -269,8 +319,7 @@ def database_health(target: DatabaseTarget) -> dict[str, str]:
         if not healthy or int(healthy["healthy"]) != 1:
             raise RuntimeError("Datenbankprüfung fehlgeschlagen.")
         project = connection.execute(
-            "SELECT name FROM projects WHERE code = ?",
-            ("braukgraben",),
+            "SELECT name FROM projects WHERE is_current = 1 ORDER BY updated_at DESC, id DESC LIMIT 1"
         ).fetchone()
         if not project:
             raise RuntimeError("Kein aktives Projekt in der Datenbank.")

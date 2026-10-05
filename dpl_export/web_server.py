@@ -10,19 +10,21 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from .database import DatabaseTarget, database_health
 from . import __version__
-from .exporter import acron_export, provider_export
+from .exporter import acron_export, export_history, provider_export, record_export_run
 from .service import (
     RevisionConflictError,
     bulk_review_datapoints,
     get_datapoint,
     list_datapoints,
+    list_projects,
     project_summary,
     recent_audit,
     update_datapoint,
 )
-from .upload import MAX_UPLOAD_BYTES, import_uploaded_dpl
+from .upload import MAX_UPLOAD_BYTES, import_uploaded_dpl, preview_uploaded_dpl
 from .pcs7 import import_pcs7_export
 from .modules import list_modules
+from .operations import operations_status
 from .runtime import (
     APP_NAME,
     BUNDLED_PATHS,
@@ -71,11 +73,13 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("Referrer-Policy", "no-referrer")
         self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Cross-Origin-Opener-Policy", "same-origin")
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         self.send_header("Cache-Control", "no-store" if content_type.startswith("application/json") else "no-cache")
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; style-src 'self'; script-src 'self'; img-src 'self' data:; "
-            "connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+            "connect-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
         )
         for name, value in extra.items():
             self.send_header(name.replace("_", "-"), value)
@@ -159,6 +163,8 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        query = parse_qs(parsed.query)
+        project_code = query.get("project", [None])[0]
         try:
             if parsed.path == "/api/health":
                 health = database_health(self.database)
@@ -170,7 +176,10 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                 return
 
             if parsed.path == "/api/project":
-                self._send_json(project_summary(self.database))
+                self._send_json(project_summary(self.database, project_code))
+                return
+            if parsed.path == "/api/projects":
+                self._send_json({"items": list_projects(self.database)})
                 return
             if parsed.path == "/api/modules":
                 self._send_json({"items": [
@@ -178,7 +187,6 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                 ]})
                 return
             if parsed.path == "/api/datapoints":
-                query = parse_qs(parsed.query)
                 self._send_json(
                     {
                         "items": list_datapoints(
@@ -186,6 +194,7 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                             search=query.get("search", [""])[0],
                             value_type=query.get("type", [""])[0],
                             marker=query.get("marker", [""])[0],
+                            project_code=project_code,
                         )
                     }
                 )
@@ -195,16 +204,28 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                 self._send_json(get_datapoint(self.database, datapoint_id))
                 return
             if parsed.path == "/api/audit":
-                query = parse_qs(parsed.query)
-                self._send_json({"items": recent_audit(self.database, int(query.get("limit", ["30"])[0]))})
+                self._send_json({"items": recent_audit(
+                    self.database, int(query.get("limit", ["30"])[0]), project_code
+                )})
+                return
+            if parsed.path == "/api/exports/history":
+                self._send_json({"items": export_history(
+                    self.database, project_code, int(query.get("limit", ["20"])[0])
+                )})
+                return
+            if parsed.path == "/api/operations":
+                self._send_json(operations_status(self.database, self.data_directory))
                 return
             if parsed.path in {"/api/exports/acron", "/api/exports/provider"}:
-                export = acron_export if parsed.path.endswith("acron") else provider_export
-                filename, content = export(self.database)
+                kind = "acron" if parsed.path.endswith("acron") else "provider"
+                export = acron_export if kind == "acron" else provider_export
+                filename, content = export(self.database, project_code)
+                run = record_export_run(self.database, project_code, kind, filename, content)
                 self._headers(
                     "text/tab-separated-values; charset=utf-16le",
                     len(content),
                     Content_Disposition=f'attachment; filename="{filename}"',
+                    X_Export_SHA256=run["sha256"],
                 )
                 self.wfile.write(content)
                 return
@@ -264,15 +285,32 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                 )
                 self._send_json(result, HTTPStatus.CREATED)
                 return
+            if parsed.path == "/api/import-dpl/preview":
+                filename, content = self._read_upload()
+                module_code = self.headers.get("X-Anlage-Module", "").strip().casefold()
+                if not module_code:
+                    raise ValueError("Vor der Vorschau einen Anlagentyp auswählen.")
+                self._send_json(preview_uploaded_dpl(
+                    self.database,
+                    filename,
+                    content,
+                    self.acron_template,
+                    self.provider_template,
+                    data_directory=self.data_directory,
+                    module_code=module_code,
+                ))
+                return
             if parsed.path == "/api/import-pcs7":
                 filename, content = self._read_upload()
+                project_code = self.headers.get("X-Project", "").strip() or None
                 result = import_pcs7_export(
                     self.database,
                     filename,
                     content,
                     data_directory=self.data_directory,
+                    project_code=project_code,
                 )
-                result["summary"] = project_summary(self.database)
+                result["summary"] = project_summary(self.database, project_code)
                 self._send_json(result, HTTPStatus.CREATED)
                 return
             self._error(HTTPStatus.NOT_FOUND, "Route nicht gefunden.")

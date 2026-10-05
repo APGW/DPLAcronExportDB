@@ -13,8 +13,8 @@ var_version="13"
 var_arm64="${var_arm64:-no}" # Python/MariaDB-Paketstand bisher nur auf amd64 verifiziert
 var_unprivileged="1"
 
-export DPL_APP_VERSION="3.5.0"
-export DPL_BUNDLE_SHA256="453aa41c51f3e0eff72010677335b6815df081f701487522fd341278b4d8a10d"
+export DPL_APP_VERSION="3.6.0"
+export DPL_BUNDLE_SHA256="74b9225bafd88aa481708be7bafb2a8f42fe56a597c13cf93c35c5fe9c6260a6"
 export DPL_BASE_URL="${DPL_BASE_URL:-}"
 export DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
 export DPL_CA_CERT="${DPL_CA_CERT:-}"

@@ -95,6 +95,21 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("upload-start-filename", page)
         self.assertIn("upload-file-state", application)
 
+    def test_improvements_are_available_in_the_web_workflow(self) -> None:
+        page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
+        application = (ROOT / "dpl_export" / "web" / "app.js").read_text(encoding="utf-8")
+        server = (ROOT / "dpl_export" / "web_server.py").read_text(encoding="utf-8")
+        self.assertIn("project-select", page)
+        self.assertIn("Exportnachweise anzeigen", page)
+        self.assertIn("Systemstatus und Datensicherung", page)
+        self.assertIn('fetchJson("/api/import-dpl/preview"', application)
+        self.assertIn('fetchJson("/api/projects"', application)
+        self.assertIn('projectUrl("/api/exports/history?limit=12")', application)
+        self.assertIn('"X-Project": state.projectCode', application)
+        self.assertIn('parsed.path == "/api/operations"', server)
+        self.assertIn('parsed.path == "/api/import-dpl/preview"', server)
+        self.assertIn("Cross-Origin-Opener-Policy", server)
+
     def test_company_logo_is_shipped(self) -> None:
         page = (ROOT / "dpl_export" / "web" / "index.html").read_text(encoding="utf-8")
         self.assertIn("/assets/agw-logo.png", page)
@@ -190,6 +205,9 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('"$database_name"', backup)
         self.assertIn('source "$database_env"', backup)
         self.assertIn("-mtime +14 -delete", backup)
+        self.assertIn("backup-status.json", backup)
+        self.assertIn("-g dpl-acron -m 0640", backup)
+        self.assertIn('install -d -o root -g root -m 0700 "$backup_dir"', backup)
 
     def test_release_build_creates_a_checksum_and_excludes_runtime_cache(self) -> None:
         bundle = (ROOT / "deploy" / "build-bundle.ps1").read_text(encoding="utf-8")

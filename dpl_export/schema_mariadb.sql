@@ -1,6 +1,10 @@
 CREATE TABLE IF NOT EXISTS projects (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
     code VARCHAR(100) NOT NULL UNIQUE,
+    logical_key VARCHAR(100) NOT NULL DEFAULT '',
+    version_number INT UNSIGNED NOT NULL DEFAULT 1,
+    is_current TINYINT(1) NOT NULL DEFAULT 1,
+    read_only TINYINT(1) NOT NULL DEFAULT 0,
     module_code VARCHAR(32) NOT NULL DEFAULT 'pwk',
     module_version VARCHAR(50) NOT NULL DEFAULT '1.0.0',
     name VARCHAR(255) NOT NULL,
@@ -16,6 +20,8 @@ CREATE TABLE IF NOT EXISTS projects (
     created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE INDEX IF NOT EXISTS idx_projects_logical_version ON projects(logical_key, version_number);
 
 CREATE TABLE IF NOT EXISTS imports (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
@@ -138,14 +144,35 @@ CREATE TABLE IF NOT EXISTS export_template_fields (
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    project_id BIGINT UNSIGNED NULL,
     datapoint_id BIGINT UNSIGNED NULL,
     entity VARCHAR(100) NOT NULL,
     field_name VARCHAR(255) NOT NULL,
     old_value TEXT,
     new_value TEXT,
     changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_audit_project (project_id, changed_at),
     KEY idx_audit_changed_at (changed_at),
+    CONSTRAINT fk_audit_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
     CONSTRAINT fk_audit_datapoint FOREIGN KEY (datapoint_id) REFERENCES datapoints(id) ON DELETE SET NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS export_runs (
+    id BIGINT UNSIGNED NOT NULL AUTO_INCREMENT PRIMARY KEY,
+    project_id BIGINT UNSIGNED NOT NULL,
+    import_id BIGINT UNSIGNED NULL,
+    kind ENUM('acron', 'provider') NOT NULL,
+    filename VARCHAR(255) NOT NULL,
+    sha256 CHAR(64) NOT NULL,
+    record_count INT UNSIGNED NOT NULL,
+    open_errors INT UNSIGNED NOT NULL DEFAULT 0,
+    open_warnings INT UNSIGNED NOT NULL DEFAULT 0,
+    module_code VARCHAR(32) NOT NULL,
+    module_version VARCHAR(50) NOT NULL,
+    exported_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    KEY idx_export_runs_project (project_id, exported_at),
+    CONSTRAINT fk_export_run_project FOREIGN KEY (project_id) REFERENCES projects(id) ON DELETE CASCADE,
+    CONSTRAINT fk_export_run_import FOREIGN KEY (import_id) REFERENCES imports(id) ON DELETE SET NULL
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
 CREATE TABLE IF NOT EXISTS pcs7_imports (

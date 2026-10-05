@@ -149,6 +149,39 @@ class UploadEndpointTest(unittest.TestCase):
         self.assertEqual("Neue Anlagen-DPL.xlsx", payload["source_filename"])
         self.assertEqual(55, payload["summary"]["counts"]["total"])
 
+    def test_endpoint_previews_without_activating_a_new_version(self) -> None:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/import-dpl/preview",
+            data=DPL.read_bytes(),
+            method="POST",
+            headers={
+                "Content-Type": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                "X-Filename": quote("Vorschau.xlsx"),
+                "X-Anlage-Module": "pwk",
+            },
+        )
+        with urllib.request.urlopen(request, timeout=20) as response:
+            payload = json.load(response)
+        self.assertEqual(55, payload["counts"]["total"])
+        self.assertEqual(55, payload["comparison"]["unchanged"])
+        self.assertEqual(1, len(json.load(urllib.request.urlopen(f"{self.base_url}/api/projects"))["items"]))
+
+    def test_export_download_creates_a_checksum_history_entry(self) -> None:
+        with urllib.request.urlopen(f"{self.base_url}/api/exports/acron", timeout=20) as response:
+            content = response.read()
+            checksum = response.headers["X-Export-SHA256"]
+        self.assertTrue(content)
+        self.assertEqual(64, len(checksum))
+        with urllib.request.urlopen(f"{self.base_url}/api/exports/history", timeout=10) as response:
+            history = json.load(response)["items"]
+        self.assertEqual(checksum, history[0]["sha256"])
+
+    def test_operations_endpoint_reports_runtime_state(self) -> None:
+        with urllib.request.urlopen(f"{self.base_url}/api/operations", timeout=10) as response:
+            payload = json.load(response)
+        self.assertEqual("sqlite", payload["database"]["backend"])
+        self.assertGreater(payload["storage"]["totalBytes"], 0)
+
     def test_data_api_is_available_without_login(self) -> None:
         with urllib.request.urlopen(f"{self.base_url}/api/project", timeout=10) as response:
             payload = json.load(response)
@@ -160,7 +193,7 @@ class UploadEndpointTest(unittest.TestCase):
         self.assertEqual("ok", payload["status"])
         self.assertEqual("sqlite", payload["backend"])
         self.assertEqual("PWK Lippestraße; Braukgraben", payload["project"])
-        self.assertEqual("3.5.0", payload["version"])
+        self.assertEqual("3.6.0", payload["version"])
 
     def test_module_api_only_lists_internal_supported_types(self) -> None:
         with urllib.request.urlopen(f"{self.base_url}/api/modules", timeout=10) as response:

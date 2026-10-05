@@ -28,6 +28,8 @@ const state = {
   uploadFiles: [],
   pcs7Files: [],
   modules: [],
+  projects: [],
+  projectCode: "",
   searchTimer: null,
   saving: false,
   editedIds: loadSessionEditedIds(),
@@ -72,6 +74,12 @@ function clearSessionEdited() {
   state.selectedIds.clear();
 }
 
+function clearEditHistory() {
+  state.undoStack = [];
+  state.redoStack = [];
+  updateHistoryOverlay();
+}
+
 function syncSessionEditedDataset(summary) {
   const fingerprint = summary.latestImport?.source_sha256
     || `${summary.project.id}:${summary.latestImport?.imported_at || "unknown"}`;
@@ -108,6 +116,12 @@ async function fetchJson(url, options = {}) {
   return payload;
 }
 
+function projectUrl(path) {
+  if (!state.projectCode) return path;
+  const separator = path.includes("?") ? "&" : "?";
+  return `${path}${separator}project=${encodeURIComponent(state.projectCode)}`;
+}
+
 function showToast(message, isError = false) {
   const toast = $("#toast");
   toast.textContent = message;
@@ -142,6 +156,14 @@ function renderSummary(summary) {
 
   text("#project-name", project.name);
   text("#project-module", `${String(project.module_code || "pwk").toUpperCase()} · Modulversion ${project.module_version || "1.0.0"}`);
+  state.projectCode = project.code;
+  const versionState = $("#project-version-state");
+  versionState.textContent = project.read_only
+    ? `Archivstand Version ${project.version_number} · nur lesbar`
+    : `Aktueller Stand · Version ${project.version_number}`;
+  versionState.classList.toggle("is-archive", Boolean(project.read_only));
+  $("#pcs7-upload-input").disabled = Boolean(project.read_only);
+  $("#pcs7-drop-zone").classList.toggle("is-disabled", Boolean(project.read_only));
   const sourceName = summary.latestImport?.source_filename || "DPL";
   text("#project-meta", `Bauabschnitt ${project.ba_number} · ${counts.total} markierte Datensätze · Quelle: ${sourceName}`);
   text("#stat-total", counts.total);
@@ -151,6 +173,9 @@ function renderSummary(summary) {
   text("#export-provider-count", counts.provider);
   text("#acron-filename", project.acron_filename);
   text("#provider-filename", project.provider_filename);
+  document.querySelectorAll(".export-link").forEach((link) => {
+    link.href = projectUrl(`/api/exports/${link.dataset.exportKind}`);
+  });
   text("#guide-source-state", `${counts.total} Datensätze: ${counts.yellow || 0} gelb ausgewählt, ${counts.orange_changes || 0} mit orange geänderten Zellen.`);
   syncSessionEditedDataset(summary);
   renderPCS7Summary(summary.pcs7 || { active: false, imports: [], checked: 0, confirmed: 0, mismatches: 0 });
@@ -552,6 +577,7 @@ function handleHistoryShortcut(event) {
 
 function itemQuery() {
   const query = new URLSearchParams();
+  if (state.projectCode) query.set("project", state.projectCode);
   if ($("#search").value) query.set("search", $("#search").value);
   if ($("#type-filter").value) query.set("type", $("#type-filter").value);
   if ($("#marker-filter").value) query.set("marker", $("#marker-filter").value);
@@ -588,17 +614,58 @@ function updateModuleSelectionContext() {
   text("#dpl-module-help", `${selected.description}${types ? ` Anlagentypen: ${types}.` : ""}${layoutInfo}`);
 }
 
+function renderProjects(projects) {
+  state.projects = projects;
+  const select = $("#project-select");
+  select.innerHTML = projects.map((project) => {
+    const stateLabel = project.read_only ? "Archiv" : "aktuell";
+    return `<option value="${escapeHtml(project.code)}">${escapeHtml(project.name)} · V${project.version_number} · ${stateLabel}</option>`;
+  }).join("");
+  select.value = state.projectCode;
+  select.disabled = projects.length < 2;
+}
+
+function renderExportHistory(items) {
+  const list = $("#export-history");
+  list.innerHTML = items.length ? items.map((item) => {
+    const timestamp = new Date(item.exported_at).toLocaleString("de-DE");
+    return `<li><strong>${escapeHtml(item.filename)}</strong> · ${item.record_count} Datensätze · ${timestamp}<br><span>SHA-256: ${escapeHtml(item.sha256)}</span></li>`;
+  }).join("") : "<li>Noch kein Exportnachweis für diese Projektversion.</li>";
+}
+
+function formatBytes(bytes) {
+  const gib = Number(bytes || 0) / (1024 ** 3);
+  return `${gib.toLocaleString("de-DE", { maximumFractionDigits: 1 })} GiB`;
+}
+
+function renderOperations(status) {
+  const backup = status.backup || {};
+  const storage = status.storage || {};
+  text("#operations-state", `Datenbank aktiv · ${storage.usedPercent ?? 0} % Speicher belegt`);
+  $("#operations-grid").innerHTML = `
+    <article><small>Datenbank</small><strong>${escapeHtml(status.database?.backend || "–")} · betriebsbereit</strong></article>
+    <article><small>Datensicherung</small><strong>${backup.available ? escapeHtml(backup.filename) : "Keine Sicherung gefunden"}</strong></article>
+    <article><small>Freier Speicher</small><strong>${formatBytes(storage.freeBytes)} von ${formatBytes(storage.totalBytes)}</strong></article>
+    <article><small>Anlagenmodule</small><strong>${(status.modules || []).map((item) => escapeHtml(`${item.code.toUpperCase()} ${item.version}`)).join(" · ") || "–"}</strong></article>`;
+}
+
 async function reload() {
-  const [summary, payload, audit, modules] = await Promise.all([
-    fetchJson("/api/project"),
+  const [summary, payload, audit, modules, projects, exports, operations] = await Promise.all([
+    fetchJson(projectUrl("/api/project")),
     fetchJson(`/api/datapoints?${itemQuery()}`),
-    fetchJson("/api/audit?limit=12"),
+    fetchJson(projectUrl("/api/audit?limit=12")),
     fetchJson("/api/modules"),
+    fetchJson("/api/projects"),
+    fetchJson(projectUrl("/api/exports/history?limit=12")),
+    fetchJson("/api/operations"),
   ]);
   renderSummary(summary);
   renderRows(payload.items);
   renderAudit(audit.items);
   renderModules(modules.items || []);
+  renderProjects(projects.items || []);
+  renderExportHistory(exports.items || []);
+  renderOperations(operations);
 }
 
 const aggregationOptions = [
@@ -739,13 +806,19 @@ function populateEditor(item) {
   updateProviderState();
   renderEditorIssues(item.issues || []);
   renderPCS7Review(item);
+  const readOnly = Boolean(item.project_read_only);
+  document.querySelectorAll("#editor-form input, #editor-form select, #editor-form textarea").forEach((control) => {
+    control.disabled = readOnly;
+  });
+  if (!readOnly) updateProviderState();
 
   const editorStatus = $("#editor-status");
   const level = (item.issues || []).some((issue) => issue.level === "error") ? "error"
     : (item.issues || []).some((issue) => issue.level === "warning") ? "warning"
       : (item.issues || []).some((issue) => issue.level === "info") ? "info" : "ok";
   editorStatus.className = `status ${level === "ok" ? "" : level}`;
-  editorStatus.textContent = level === "error" ? "Korrektur erforderlich" : level === "warning" ? "Prüfung erforderlich" : level === "info" ? "Hinweis" : "Bereit";
+  editorStatus.textContent = readOnly ? `Archiv · Version ${item.project_version}`
+    : level === "error" ? "Korrektur erforderlich" : level === "warning" ? "Prüfung erforderlich" : level === "info" ? "Hinweis" : "Bereit";
 
   state.initialPayload = JSON.stringify(editorPayload());
   updateDirtyState();
@@ -816,8 +889,10 @@ function isEditorDirty() {
 function updateDirtyState() {
   const dirty = isEditorDirty();
   text("#unsaved-state", dirty ? "Ungespeicherte Änderungen" : "");
-  $("#save-editor").disabled = !dirty || state.saving;
-  if (!$("#pcs7-review-control").hidden) $("#pcs7-review-button").disabled = dirty || state.saving;
+  $("#save-editor").disabled = Boolean(state.current?.project_read_only) || !dirty || state.saving;
+  if (!$("#pcs7-review-control").hidden) {
+    $("#pcs7-review-button").disabled = Boolean(state.current?.project_read_only) || dirty || state.saving;
+  }
 }
 
 function renderPCS7Review(item) {
@@ -1032,18 +1107,35 @@ async function uploadDpl() {
     showUploadResult("Anlagentyp auswählen.", true);
     return;
   }
-  const confirmed = window.confirm(
-    `„${file.name}“ als ${selectedModule.name}-DPL importieren?\n\nEin erfolgreicher Import ersetzt den aktiven Projektdatenstand. Bereits geöffnete Datensätze anschließend neu laden.`
-  );
-  if (!confirmed) return;
-
   const button = $("#upload-start");
   button.disabled = true;
-  $("#upload-selection").hidden = true;
   $("#upload-progress").hidden = false;
   $("#dpl-drop-zone").classList.add("is-disabled");
 
   try {
+    text("#upload-progress strong", "DPL wird vorab geprüft …");
+    const preview = await fetchJson("/api/import-dpl/preview", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "X-Filename": encodeURIComponent(file.name),
+        "X-Anlage-Module": moduleCode,
+      },
+      body: file,
+    });
+    const comparison = preview.comparison;
+    const versionNote = comparison.existingProject
+      ? `Die vorhandene Version bleibt als schreibgeschützter Archivstand erhalten.\n\nÄnderungen: ${comparison.added} neu, ${comparison.changed} geändert, ${comparison.removed} entfallen, ${comparison.unchanged} unverändert.`
+      : "Für dieses Projekt wird die erste Version angelegt.";
+    const confirmed = window.confirm(
+      `„${file.name}“ als ${selectedModule.name}-DPL importieren?\n\n${preview.counts.total} markierte Datensätze wurden erkannt.\n${versionNote}`
+    );
+    if (!confirmed) {
+      showUploadResult("Import nach erfolgreicher Vorschau abgebrochen.");
+      return;
+    }
+    $("#upload-selection").hidden = true;
+    text("#upload-progress strong", "DPL wird importiert …");
     const result = await fetchJson("/api/import-dpl", {
       method: "POST",
       headers: {
@@ -1061,6 +1153,8 @@ async function uploadDpl() {
     $("#type-filter").value = "";
     $("#marker-filter").value = "";
     clearSessionEdited();
+    clearEditHistory();
+    state.projectCode = result.project_code || "";
     await reload();
     renderUploadQueue();
     const backupNote = result.backend === "mariadb"
@@ -1075,6 +1169,7 @@ async function uploadDpl() {
     showUploadResult(`Import abgebrochen: ${error.message}`, true);
   } finally {
     button.disabled = false;
+    text("#upload-progress strong", "DPL wird geprüft und importiert …");
     $("#upload-progress").hidden = true;
     $("#dpl-drop-zone").classList.remove("is-disabled");
   }
@@ -1121,6 +1216,7 @@ async function uploadPCS7Files() {
         headers: {
           "Content-Type": file.type || "application/octet-stream",
           "X-Filename": encodeURIComponent(file.name),
+          "X-Project": state.projectCode,
         },
         body: file,
       });
@@ -1189,6 +1285,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("#dpl-upload-input").addEventListener("change", (event) => selectUploadFiles(event.target.files));
   $("#dpl-module-select").addEventListener("change", updateModuleSelectionContext);
+  $("#project-select").addEventListener("change", async (event) => {
+    state.projectCode = event.target.value;
+    clearSessionEdited();
+    clearEditHistory();
+    try {
+      await reload();
+    } catch (error) {
+      showToast(`Projektversion konnte nicht geladen werden: ${error.message}`, true);
+    }
+  });
   document.addEventListener("paste", pasteUploadFile);
   $("#upload-start").addEventListener("click", uploadDpl);
   $("#dpl-drop-zone").addEventListener("keydown", (event) => {
@@ -1246,6 +1352,11 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
       }
       showToast("Exportdatei wird erstellt.");
+      window.setTimeout(() => {
+        fetchJson(projectUrl("/api/exports/history?limit=12"))
+          .then((payload) => renderExportHistory(payload.items || []))
+          .catch(() => {});
+      }, 1200);
     });
   });
 

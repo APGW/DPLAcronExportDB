@@ -27,6 +27,33 @@ def _as_dict(row: Any) -> dict[str, Any]:
     return {key: _json_value(row[key]) for key in row.keys()}
 
 
+def _project_row(connection: DatabaseConnection, project_code: str | None = None):
+    if project_code:
+        project = connection.execute("SELECT * FROM projects WHERE code = ?", (project_code,)).fetchone()
+    else:
+        project = connection.execute(
+            "SELECT * FROM projects WHERE is_current = 1 ORDER BY updated_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+    if not project:
+        raise ValueError("Projekt nicht gefunden.")
+    return project
+
+
+def list_projects(database: DatabaseTarget) -> list[dict[str, Any]]:
+    connection = connect(database)
+    rows = connection.execute(
+        """
+        SELECT p.*,
+               (SELECT COUNT(*) FROM datapoints d WHERE d.project_id = p.id) AS datapoint_count,
+               (SELECT MAX(imported_at) FROM imports i WHERE i.project_id = p.id) AS imported_at
+        FROM projects p
+        ORDER BY p.is_current DESC, p.name, p.version_number DESC, p.id DESC
+        """
+    ).fetchall()
+    connection.close()
+    return [_as_dict(row) for row in rows]
+
+
 def _optional_int(value: Any) -> int | None:
     if value in (None, ""):
         return None
@@ -278,13 +305,10 @@ def list_datapoints(
     search: str = "",
     value_type: str = "",
     marker: str = "",
-    project_code: str = "braukgraben",
+    project_code: str | None = None,
 ) -> list[dict[str, Any]]:
     connection = connect(database)
-    project = connection.execute("SELECT id FROM projects WHERE code = ?", (project_code,)).fetchone()
-    if not project:
-        connection.close()
-        raise ValueError("Projekt nicht gefunden.")
+    project = _project_row(connection, project_code)
     where = ["project_id = ?"]
     parameters: list[Any] = [project["id"]]
     if search:
@@ -331,12 +355,9 @@ def list_datapoints(
     return result
 
 
-def project_summary(database: DatabaseTarget, project_code: str = "braukgraben") -> dict[str, Any]:
+def project_summary(database: DatabaseTarget, project_code: str | None = None) -> dict[str, Any]:
     connection = connect(database)
-    project = connection.execute("SELECT * FROM projects WHERE code = ?", (project_code,)).fetchone()
-    if not project:
-        connection.close()
-        raise ValueError("Projekt nicht gefunden.")
+    project = _project_row(connection, project_code)
     counts = connection.execute(
         """
         SELECT
@@ -363,7 +384,7 @@ def project_summary(database: DatabaseTarget, project_code: str = "braukgraben")
     ).fetchone()
     pcs7_context = _pcs7_context(connection, project["id"])
     connection.close()
-    records = list_datapoints(database, project_code=project_code)
+    records = list_datapoints(database, project_code=str(project["code"]))
     issue_counts = {
         level: sum(1 for record in records for issue in record["issues"] if issue["level"] == level)
         for level in ("error", "warning", "info")
@@ -397,6 +418,12 @@ def get_datapoint(database: DatabaseTarget, datapoint_id: int) -> dict[str, Any]
         connection.close()
         raise KeyError(datapoint_id)
     record = _as_dict(row)
+    project = connection.execute(
+        "SELECT code, read_only, version_number FROM projects WHERE id = ?", (record["project_id"],)
+    ).fetchone()
+    record["project_code"] = str(project["code"])
+    record["project_read_only"] = bool(project["read_only"])
+    record["project_version"] = int(project["version_number"])
     duplicate = connection.execute(
         """
         SELECT COUNT(*) AS amount FROM v_datapoint_editor
@@ -423,13 +450,17 @@ def _audit(
 ) -> None:
     if old_value == new_value:
         return
+    project = connection.execute(
+        "SELECT project_id FROM datapoints WHERE id = ?", (datapoint_id,)
+    ).fetchone()
     connection.execute(
         """
         INSERT INTO audit_log(
-            datapoint_id, entity, field_name, old_value, new_value
-        ) VALUES (?, ?, ?, ?, ?)
+            project_id, datapoint_id, entity, field_name, old_value, new_value
+        ) VALUES (?, ?, ?, ?, ?, ?)
         """,
         (
+            project["project_id"],
             datapoint_id,
             entity,
             field,
@@ -476,11 +507,17 @@ def update_datapoint(
     connection = connect(database)
     try:
         current = connection.execute(
-            "SELECT enabled, pcs7_reviewed, row_version FROM datapoints WHERE id = ?",
+            """
+            SELECT d.enabled, d.pcs7_reviewed, d.row_version, p.read_only
+            FROM datapoints d JOIN projects p ON p.id = d.project_id
+            WHERE d.id = ?
+            """,
             (datapoint_id,),
         ).fetchone()
         if not current:
             raise KeyError(datapoint_id)
+        if current["read_only"]:
+            raise ValueError("Diese Projektversion ist schreibgeschützt.")
         with transaction(connection):
             cursor = connection.execute(
                 """
@@ -580,11 +617,17 @@ def bulk_review_datapoints(
         with transaction(connection):
             for datapoint_id, revision in normalized:
                 current = connection.execute(
-                    "SELECT pcs7_reviewed FROM datapoints WHERE id = ?",
+                    """
+                    SELECT d.pcs7_reviewed, p.read_only
+                    FROM datapoints d JOIN projects p ON p.id = d.project_id
+                    WHERE d.id = ?
+                    """,
                     (datapoint_id,),
                 ).fetchone()
                 if not current:
                     raise KeyError(datapoint_id)
+                if current["read_only"]:
+                    raise ValueError("Diese Projektversion ist schreibgeschützt.")
                 cursor = connection.execute(
                     """
                     UPDATE datapoints
@@ -610,17 +653,21 @@ def bulk_review_datapoints(
     return [get_datapoint(database, datapoint_id) for datapoint_id, _revision in normalized]
 
 
-def recent_audit(database: DatabaseTarget, limit: int = 30) -> list[dict[str, Any]]:
+def recent_audit(
+    database: DatabaseTarget, limit: int = 30, project_code: str | None = None
+) -> list[dict[str, Any]]:
     connection = connect(database)
+    project = _project_row(connection, project_code)
     rows = connection.execute(
         """
         SELECT a.*, d.source_long_name, c.identification
         FROM audit_log a
         LEFT JOIN datapoints d ON d.id = a.datapoint_id
         LEFT JOIN acron_configs c ON c.datapoint_id = a.datapoint_id
+        WHERE a.project_id = ?
         ORDER BY a.id DESC LIMIT ?
         """,
-        (min(max(limit, 1), 200),),
+        (project["id"], min(max(limit, 1), 200)),
     ).fetchall()
     connection.close()
     return [_as_dict(row) for row in rows]

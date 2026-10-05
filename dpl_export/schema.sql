@@ -3,6 +3,10 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS projects (
     id INTEGER PRIMARY KEY,
     code TEXT NOT NULL UNIQUE,
+    logical_key TEXT NOT NULL DEFAULT '',
+    version_number INTEGER NOT NULL DEFAULT 1,
+    is_current INTEGER NOT NULL DEFAULT 1 CHECK(is_current IN (0, 1)),
+    read_only INTEGER NOT NULL DEFAULT 0 CHECK(read_only IN (0, 1)),
     module_code TEXT NOT NULL DEFAULT 'pwk',
     module_version TEXT NOT NULL DEFAULT '1.0.0',
     name TEXT NOT NULL,
@@ -129,6 +133,7 @@ CREATE TABLE IF NOT EXISTS export_template_fields (
 
 CREATE TABLE IF NOT EXISTS audit_log (
     id INTEGER PRIMARY KEY,
+    project_id INTEGER REFERENCES projects(id) ON DELETE CASCADE,
     datapoint_id INTEGER REFERENCES datapoints(id) ON DELETE SET NULL,
     entity TEXT NOT NULL,
     field_name TEXT NOT NULL,
@@ -136,6 +141,25 @@ CREATE TABLE IF NOT EXISTS audit_log (
     new_value TEXT,
     changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(project_id, changed_at);
+
+CREATE TABLE IF NOT EXISTS export_runs (
+    id INTEGER PRIMARY KEY,
+    project_id INTEGER NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    import_id INTEGER REFERENCES imports(id) ON DELETE SET NULL,
+    kind TEXT NOT NULL CHECK(kind IN ('acron', 'provider')),
+    filename TEXT NOT NULL,
+    sha256 TEXT NOT NULL,
+    record_count INTEGER NOT NULL,
+    open_errors INTEGER NOT NULL DEFAULT 0,
+    open_warnings INTEGER NOT NULL DEFAULT 0,
+    module_code TEXT NOT NULL,
+    module_version TEXT NOT NULL,
+    exported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_export_runs_project ON export_runs(project_id, exported_at);
 
 CREATE TABLE IF NOT EXISTS pcs7_imports (
     id INTEGER PRIMARY KEY,

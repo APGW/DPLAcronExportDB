@@ -1,12 +1,12 @@
 {
   "application": "DPL2ACRON",
-  "version": "3.5.0",
-  "bundle": "releases/3.5.0/dpl-acron-debian13.tar.gz",
-  "bundle_sha256": "453aa41c51f3e0eff72010677335b6815df081f701487522fd341278b4d8a10d",
-  "installer": "releases/3.5.0/proxmox-install-lxc.sh",
+  "version": "3.6.0",
+  "bundle": "releases/3.6.0/dpl-acron-debian13.tar.gz",
+  "bundle_sha256": "74b9225bafd88aa481708be7bafb2a8f42fe56a597c13cf93c35c5fe9c6260a6",
+  "installer": "releases/3.6.0/proxmox-install-lxc.sh",
   "installer_sha256": "15ce8a12e78ac632f15f9bb59742b9d05e5d7cef80ed85487cb4652d91298b90",
   "community_script": "ct/dpl-acron.sh",
-  "community_script_sha256": "46716eea8d47a7ab16a058f51cef4ae3e699e3160fcf57f6fd10e5d163940e12",
+  "community_script_sha256": "a15e43bd7042afd4386a64e1f39d1762c1e76a46d2753517b1539a42f4029316",
   "community_install": "install/dpl-acron-install.sh",
   "community_install_sha256": "4b196f34c6bc0137c3ed590c28a46c259dc45139ca923436c412e090390a551e"
 }

@@ -5,6 +5,16 @@ einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemei
 Korrektur bereit und erzeugt getrennte ACRON- und
 WINCC60-Provider-Exporte.
 
+## Version 3.6.0
+
+- prüft eine DPL vor der Übernahme und zeigt neue, geänderte sowie entfallene Datensätze an
+- bewahrt vorherige Projektversionen schreibgeschützt und auswählbar auf
+- ordnet PCS7-Prüfdateien und Exporte eindeutig der gewählten Projektversion zu
+- protokolliert jeden CSV-Export mit SHA-256-Prüfsumme und Datensatzanzahl
+- zeigt Datenbank-, Sicherungs-, Speicher- und Modulstatus direkt im Webinterface
+- begrenzt und prüft XLSX-Archive vor der Verarbeitung gegen fehlerhafte oder übergroße Inhalte
+- ergänzt restriktive HTTP-Sicherheitsheader für den Intranetbetrieb
+
 Die Tabellenansicht unterstützt Einzel- und Mehrfachauswahl. PCS7-Abweichungen
 können direkt in der Zeile oder gesammelt als geprüft markiert werden. Ein
 kompaktes, ständig sichtbares Undo/Redo-Element hält die letzten 30

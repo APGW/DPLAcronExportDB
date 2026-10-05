@@ -133,7 +133,7 @@ def import_pcs7_export(
     content: bytes,
     *,
     data_directory: Path,
-    project_code: str = "braukgraben",
+    project_code: str | None = None,
 ) -> dict[str, Any]:
     from .upload import validate_xlsx_upload
 
@@ -146,10 +146,23 @@ def import_pcs7_export(
     try:
         kind, references = parse_pcs7_export(source_path)
         connection = connect(database)
-        project = connection.execute("SELECT id FROM projects WHERE code = ?", (project_code,)).fetchone()
+        if project_code:
+            project = connection.execute(
+                "SELECT id, read_only FROM projects WHERE code = ?", (project_code,)
+            ).fetchone()
+        else:
+            project = connection.execute(
+                """
+                SELECT id, read_only FROM projects
+                WHERE is_current = 1 ORDER BY updated_at DESC, id DESC LIMIT 1
+                """
+            ).fetchone()
         if not project:
             connection.close()
             raise ValueError("Vor dem PCS7-Export muss eine DPL eingelesen werden.")
+        if project["read_only"]:
+            connection.close()
+            raise ValueError("Diese Projektversion ist schreibgeschützt.")
         with transaction(connection):
             connection.execute(
                 """

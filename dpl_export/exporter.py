@@ -2,11 +2,24 @@ from __future__ import annotations
 
 import codecs
 import csv
+import hashlib
 import io
 from pathlib import Path
 from typing import Any
 
 from .database import DatabaseTarget, connect
+
+
+def _project(connection, project_code: str | None = None):
+    if project_code:
+        project = connection.execute("SELECT * FROM projects WHERE code = ?", (project_code,)).fetchone()
+    else:
+        project = connection.execute(
+            "SELECT * FROM projects WHERE is_current = 1 ORDER BY updated_at DESC, id DESC LIMIT 1"
+        ).fetchone()
+    if not project:
+        raise ValueError(f"Projekt nicht gefunden: {project_code or 'aktuell'}")
+    return project
 
 
 def _text(value: Any) -> str:
@@ -60,12 +73,9 @@ def _range_overrides(record) -> dict[str, str]:
     return result
 
 
-def acron_export(database: DatabaseTarget, project_code: str = "braukgraben") -> tuple[str, bytes]:
+def acron_export(database: DatabaseTarget, project_code: str | None = None) -> tuple[str, bytes]:
     connection = connect(database)
-    project = connection.execute("SELECT * FROM projects WHERE code = ?", (project_code,)).fetchone()
-    if not project:
-        connection.close()
-        raise ValueError(f"Projekt nicht gefunden: {project_code}")
+    project = _project(connection, project_code)
     headers, defaults = _template(connection, project["id"], "acron")
     records = connection.execute(
         """
@@ -123,12 +133,9 @@ def acron_export(database: DatabaseTarget, project_code: str = "braukgraben") ->
     return project["acron_filename"], _encode_tsv(headers, rows)
 
 
-def provider_export(database: DatabaseTarget, project_code: str = "braukgraben") -> tuple[str, bytes]:
+def provider_export(database: DatabaseTarget, project_code: str | None = None) -> tuple[str, bytes]:
     connection = connect(database)
-    project = connection.execute("SELECT * FROM projects WHERE code = ?", (project_code,)).fetchone()
-    if not project:
-        connection.close()
-        raise ValueError(f"Projekt nicht gefunden: {project_code}")
+    project = _project(connection, project_code)
     headers, defaults = _template(connection, project["id"], "provider")
     records = connection.execute(
         """
@@ -161,7 +168,7 @@ def provider_export(database: DatabaseTarget, project_code: str = "braukgraben")
 def write_exports(
     database: DatabaseTarget,
     output_directory: Path,
-    project_code: str = "braukgraben",
+    project_code: str | None = None,
 ) -> list[Path]:
     output_directory.mkdir(parents=True, exist_ok=True)
     outputs = []
@@ -171,3 +178,67 @@ def write_exports(
         path.write_bytes(content)
         outputs.append(path)
     return outputs
+
+
+def record_export_run(
+    database: DatabaseTarget,
+    project_code: str | None,
+    kind: str,
+    filename: str,
+    content: bytes,
+) -> dict[str, Any]:
+    from .service import project_summary
+
+    summary = project_summary(database, project_code)
+    project = summary["project"]
+    count_key = "enabled" if kind == "acron" else "provider"
+    connection = connect(database)
+    latest_import = connection.execute(
+        "SELECT id FROM imports WHERE project_id = ? ORDER BY id DESC LIMIT 1", (project["id"],)
+    ).fetchone()
+    cursor = connection.execute(
+        """
+        INSERT INTO export_runs(
+            project_id, import_id, kind, filename, sha256, record_count,
+            open_errors, open_warnings, module_code, module_version
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            project["id"],
+            latest_import["id"] if latest_import else None,
+            kind,
+            filename,
+            hashlib.sha256(content).hexdigest(),
+            int(summary["counts"][count_key] or 0),
+            int(summary["issues"]["error"] or 0),
+            int(summary["issues"]["warning"] or 0),
+            project["module_code"],
+            project["module_version"],
+        ),
+    )
+    connection.commit()
+    run_id = int(cursor.lastrowid)
+    connection.close()
+    return {
+        "id": run_id,
+        "sha256": hashlib.sha256(content).hexdigest(),
+        "recordCount": int(summary["counts"][count_key] or 0),
+    }
+
+
+def export_history(
+    database: DatabaseTarget, project_code: str | None = None, limit: int = 20
+) -> list[dict[str, Any]]:
+    connection = connect(database)
+    project = _project(connection, project_code)
+    rows = connection.execute(
+        """
+        SELECT id, kind, filename, sha256, record_count, open_errors, open_warnings,
+               module_code, module_version, exported_at
+        FROM export_runs WHERE project_id = ? ORDER BY id DESC LIMIT ?
+        """,
+        (project["id"], min(max(int(limit), 1), 100)),
+    ).fetchall()
+    result = [{key: row[key] for key in row.keys()} for row in rows]
+    connection.close()
+    return result

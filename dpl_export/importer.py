@@ -133,6 +133,19 @@ def _project_name(metadata_value: Any, source_name: str) -> str:
     return fallback.strip(" _-") or name
 
 
+def _project_key(ba_number: str, project_name: str) -> str:
+    # Der technische Projektschlüssel bleibt für bestehende Installationen
+    # kompatibel und menschenlesbar. Die BA-Nummer dient zusätzlich zur
+    # Wiedererkennung neuer DPL-Versionen, ist aber nicht der sichtbare Code.
+    source = project_name or ba_number
+    if ";" in source:
+        source = source.rsplit(";", 1)[-1].strip()
+    normalized = source.casefold().replace("ß", "ss")
+    normalized = normalized.replace("ä", "ae").replace("ö", "oe").replace("ü", "ue")
+    normalized = re.sub(r"[^a-z0-9]+", "-", normalized).strip("-")
+    return (normalized or "projekt")[:80]
+
+
 def _provider_group(template_group: str, project_name: str) -> str:
     prefix, separator, _ = template_group.rpartition("|")
     return f"{prefix}|{project_name}" if separator else project_name
@@ -287,23 +300,6 @@ def import_project(
 ) -> dict[str, int | str]:
     connection = connect(database)
     initialize_schema(connection)
-    existing = connection.execute("SELECT id FROM projects WHERE code = 'braukgraben'").fetchone()
-    if existing and not force:
-        stats = connection.execute(
-            """
-            SELECT COUNT(*) AS total,
-                   SUM(CASE WHEN provider_include_export = 1 THEN 1 ELSE 0 END) AS provider
-            FROM v_datapoint_editor WHERE project_id = ?
-            """,
-            (existing["id"],),
-        ).fetchone()
-        connection.close()
-        return {
-            "project_id": int(existing["id"]),
-            "selected": int(stats["total"] or 0),
-            "provider": int(stats["provider"] or 0),
-            "status": "existing",
-        }
 
     try:
         workbook = read_workbook(dpl_path)
@@ -336,6 +332,37 @@ def import_project(
         acron_prefix = _normalize_prefix(metadata.value(*metadata_map["acron_prefix"]))
         if not ba_number or not project_name:
             raise ValueError("Projektname oder BA-Nummer fehlen in der Anlagenhistorie.")
+        requested_key = _project_key(ba_number, project_name)
+        existing = connection.execute(
+            """
+            SELECT * FROM projects
+            WHERE logical_key = ? OR ba_number = ?
+            ORDER BY version_number DESC, id DESC
+            LIMIT 1
+            """,
+            (requested_key, ba_number),
+        ).fetchone()
+        logical_key = str(existing["logical_key"] or existing["code"]) if existing else requested_key
+        if existing and not force:
+            stats = connection.execute(
+                """
+                SELECT COUNT(*) AS total,
+                       SUM(CASE WHEN provider_include_export = 1 THEN 1 ELSE 0 END) AS provider
+                FROM v_datapoint_editor WHERE project_id = ?
+                """,
+                (existing["id"],),
+            ).fetchone()
+            connection.close()
+            return {
+                "project_id": int(existing["id"]),
+                "project_code": str(existing["code"]),
+                "project_version": int(existing["version_number"]),
+                "selected": int(stats["total"] or 0),
+                "provider": int(stats["provider"] or 0),
+                "status": "existing",
+            }
+        version_number = int(existing["version_number"]) + 1 if existing else 1
+        project_code = logical_key if version_number == 1 else f"{logical_key}-v{version_number}"
 
         acron_headers, acron_defaults, _ = _read_acron_template(acron_template_path)
         provider_headers, provider_defaults, template_provider_group = _read_provider_template(provider_template_path)
@@ -352,17 +379,23 @@ def import_project(
 
     with transaction(connection):
         if existing:
-            connection.execute("DELETE FROM projects WHERE id = ?", (existing["id"],))
+            connection.execute(
+                "UPDATE projects SET is_current = 0, read_only = 1 WHERE logical_key = ?",
+                (logical_key,),
+            )
         project_cursor = connection.execute(
             """
             INSERT INTO projects(
-                code, module_code, module_version, name, ba_number, acron_prefix, acron_group_root, provider_group_root,
+                code, logical_key, version_number, is_current, read_only,
+                module_code, module_version, name, ba_number, acron_prefix, acron_group_root, provider_group_root,
                 acron_filename, provider_filename, source_dpl, source_acron_template,
                 source_provider_template
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, 1, 0, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
-                "braukgraben",
+                project_code,
+                logical_key,
+                version_number,
                 module.code,
                 module.version,
                 project_name,
@@ -514,15 +547,17 @@ def import_project(
         connection.execute(
             """
             INSERT INTO audit_log(
-                datapoint_id, entity, field_name, old_value, new_value
-            ) VALUES (NULL, 'project', 'import', NULL, ?)
+                project_id, datapoint_id, entity, field_name, old_value, new_value
+            ) VALUES (?, NULL, 'project', 'import', NULL, ?)
             """,
-            (source_filename or dpl_path.name,),
+            (project_id, source_filename or dpl_path.name),
         )
 
     connection.close()
     return {
         "project_id": project_id,
+        "project_code": project_code,
+        "project_version": version_number,
         "selected": len(selected),
         "provider": provider_count,
         "module": module.code,

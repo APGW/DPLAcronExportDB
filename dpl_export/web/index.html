@@ -124,7 +124,14 @@
           <p id="project-meta" class="muted">Die Projektdaten werden vorbereitet.</p>
           <p><span class="module-chip" id="project-module">Anlagenmodul wird erkannt …</span></p>
         </div>
-        <a class="quiet-link" href="#quick-help">Arbeitsablauf anzeigen</a>
+        <div class="project-switcher">
+          <label for="project-select">Projektversion anzeigen</label>
+          <select id="project-select" aria-describedby="project-version-state">
+            <option>Projektversionen werden geladen …</option>
+          </select>
+          <small id="project-version-state">Aktueller, bearbeitbarer Stand</small>
+          <a class="quiet-link" href="#quick-help">Arbeitsablauf anzeigen</a>
+        </div>
       </section>
 
       <section class="workflow" id="quick-help" aria-labelledby="workflow-title">
@@ -276,6 +283,18 @@
         </ol>
       </section>
 
+      <section class="operations-section" aria-labelledby="operations-title">
+        <details>
+          <summary>
+            <span><span class="eyebrow">Betriebsinformation</span><strong id="operations-title">Systemstatus und Datensicherung</strong></span>
+            <span id="operations-state">Status wird geladen …</span>
+          </summary>
+          <div class="operations-grid" id="operations-grid">
+            <p>Systemstatus wird geladen …</p>
+          </div>
+        </details>
+      </section>
+
       <section class="exports-section" id="exports" aria-labelledby="exports-title">
         <div class="exports-heading">
           <div>
@@ -306,6 +325,12 @@
           </article>
         </div>
         <p class="export-note">Jeder Download wird aus dem aktuell gespeicherten Datenstand erzeugt.</p>
+        <details class="export-history-panel">
+          <summary>Exportnachweise anzeigen</summary>
+          <ol id="export-history" class="export-history-list">
+            <li>Noch kein Exportnachweis für diese Projektversion.</li>
+          </ol>
+        </details>
       </section>
     </main>
 
