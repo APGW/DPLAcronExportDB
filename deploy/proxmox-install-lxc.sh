@@ -1,23 +1,7 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
 
 admin_password="${DPL_ADMIN_PASSWORD:-}"
-unset DPL_ADMIN_PASSWORD
-
-# Vollständige Installation eines neuen Debian-13-LXC auf einem Proxmox-VE-Host.
-# Pflichtangaben:
-#   CTID=3072 WEB_CIDRS="192.168.133.0/24,10.20.0.0/16" \
-#   bash proxmox-install-lxc.sh
-# Alternativ zum lokalen Archiv:
-#   BUNDLE_URL=https://intern.example/dpl-acron-debian13.tar.gz \
-#   BUNDLE_SHA256=<64-zeichen> ... bash proxmox-install-lxc.sh
-
-if [[ "${EUID}" -ne 0 ]] || ! command -v pct >/dev/null 2>&1; then
-  echo "Dieses Skript muss als root auf einem Proxmox-VE-Host laufen." >&2
-  exit 1
-fi
-
-script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 ctid="${CTID:-}"
 ct_hostname="${CT_HOSTNAME:-dpl-acron}"
 root_storage="${ROOT_STORAGE:-local-lvm}"
@@ -39,9 +23,42 @@ rootfs_size="${ROOTFS_GB:-8}"
 admin_username="${DPL_ADMIN_USERNAME:-admin}"
 update_base_url="${DPL_UPDATE_BASE_URL:-}"
 update_allow_http="${DPL_UPDATE_ALLOW_HTTP:-0}"
+allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
+ca_cert="${DPL_CA_CERT:-}"
+
+for function_name in $(builtin compgen -A function); do
+  builtin unset -f "$function_name"
+done
+builtin unset DPL_ADMIN_PASSWORD BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+builtin export IFS=$' \t\n'
+builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+
+readonly BASH_BIN=/bin/bash
+readonly CURL_BIN=/usr/bin/curl
+readonly ENV_BIN=/usr/bin/env
+readonly PYTHON_BIN=/usr/bin/python3
+readonly SHA256SUM_BIN=/usr/bin/sha256sum
+
+# Vollständige Installation eines neuen Debian-13-LXC auf einem Proxmox-VE-Host.
+# Pflichtangaben:
+#   /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin CTID=3072 \
+#   WEB_CIDRS="192.168.133.0/24,10.20.0.0/16" \
+#   /bin/bash -p --noprofile --norc proxmox-install-lxc.sh
+# Alternativ zum lokalen Archiv:
+#   BUNDLE_URL=https://intern.example/dpl-acron-debian13.tar.gz \
+#   BUNDLE_SHA256=<64-zeichen> ... /bin/bash -p --noprofile --norc proxmox-install-lxc.sh
+
+if [[ "${EUID}" -ne 0 ]] || [[ ! -x /usr/sbin/pct ]]; then
+  echo "Dieses Skript muss als root auf einem Proxmox-VE-Host laufen." >&2
+  exit 1
+fi
+
+script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 work_dir="$(mktemp -d)"
 firewall_temp=""
 container_password_file=""
+container_ca_file=""
 
 cleanup() {
   rm -rf -- "$work_dir"
@@ -50,6 +67,9 @@ cleanup() {
   fi
   if [[ -n "$container_password_file" ]] && pct status "$ctid" >/dev/null 2>&1; then
     pct exec "$ctid" -- rm -f -- "$container_password_file" >/dev/null 2>&1 || true
+  fi
+  if [[ -n "$container_ca_file" ]] && pct status "$ctid" >/dev/null 2>&1; then
+    pct exec "$ctid" -- rm -f -- "$container_ca_file" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -74,6 +94,8 @@ fi
 
 [[ "$ctid" =~ ^[1-9][0-9]{2,8}$ ]] || fail "CTID muss gesetzt und eine gültige Proxmox-ID sein."
 [[ -n "$web_cidrs" ]] || fail "WEB_CIDRS muss die erlaubten LAN-/VPN-Netze enthalten."
+[[ "$allow_public_cidrs" == "0" || "$allow_public_cidrs" == "1" ]] \
+  || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
 if [[ -z "$admin_password" ]]; then
   read -r -s -p "Initiales oder neues DPL2ACRON-Administratorkennwort: " admin_password </dev/tty
   echo
@@ -102,31 +124,72 @@ if pct status "$ctid" >/dev/null 2>&1; then
   ct_exists=1
 fi
 
-validate_cidrs() {
+normalize_cidrs() {
   local value="$1"
-  python3 - "$value" <<'PY' || fail "Ungültiges oder zu breites Netz: $value"
+  "$PYTHON_BIN" -I - "$value" "$allow_public_cidrs" <<'PY'
 import ipaddress
 import sys
-for raw in sys.argv[1].split(","):
-    network = ipaddress.ip_network(raw.strip(), strict=False)
-    if network.prefixlen == 0:
+
+raw_values = sys.argv[1].split(",")
+if not raw_values or any(not item.strip() for item in raw_values):
+    raise SystemExit(1)
+values = [item.strip() for item in raw_values]
+allow_public = sys.argv[2] == "1"
+private_v4 = [ipaddress.ip_network(value) for value in ("10.0.0.0/8", "100.64.0.0/10", "172.16.0.0/12", "192.168.0.0/16")]
+private_v6 = ipaddress.ip_network("fc00::/7")
+normalized = []
+for value in values:
+    network = ipaddress.ip_network(value, strict=True)
+    if network.is_loopback or network.is_link_local or network.is_multicast or network.is_unspecified or network.is_reserved:
         raise SystemExit(1)
+    if network.version == 4:
+        if network.prefixlen < 8:
+            raise SystemExit(1)
+        private = any(network.subnet_of(parent) for parent in private_v4)
+    else:
+        if network.prefixlen < 32:
+            raise SystemExit(1)
+        private = network.subnet_of(private_v6)
+    if not private and not allow_public:
+        raise SystemExit(1)
+    canonical = str(network)
+    if canonical not in normalized:
+        normalized.append(canonical)
+print(",".join(normalized))
 PY
 }
-validate_cidrs "$web_cidrs"
+web_cidrs="$(normalize_cidrs "$web_cidrs")" \
+  || fail "WEB_CIDRS enthält ein ungültiges, spezielles, öffentliches oder zu breites Netz."
 if [[ -n "$ssh_cidrs" ]]; then
-  validate_cidrs "$ssh_cidrs"
+  ssh_cidrs="$(normalize_cidrs "$ssh_cidrs")" \
+    || fail "SSH_CIDRS enthält ein ungültiges, spezielles, öffentliches oder zu breites Netz."
 fi
 if [[ -n "$ssh_public_keys" && ! -f "$ssh_public_keys" ]]; then
   fail "SSH_PUBLIC_KEYS wurde nicht gefunden: $ssh_public_keys"
+fi
+if [[ -n "$ca_cert" ]]; then
+  [[ "$ca_cert" == /* && -f "$ca_cert" && ! -L "$ca_cert" ]] \
+    || fail "DPL_CA_CERT muss eine absolute, reguläre CA-Datei auf dem Proxmox-Host sein."
+  ca_mode="$(stat -c '%a' -- "$ca_cert")"
+  [[ "$(stat -c '%u' -- "$ca_cert")" == "0" ]] \
+    && (( (8#$ca_mode & 8#022) == 0 )) \
+    || fail "DPL_CA_CERT muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
 fi
 
 if [[ -n "$bundle_url" ]]; then
   [[ "$bundle_url" == https://* ]] || fail "BUNDLE_URL muss eine HTTPS-Adresse sein."
   [[ "$bundle_sha256" =~ ^[a-fA-F0-9]{64}$ ]] || fail "Für BUNDLE_URL ist BUNDLE_SHA256 zwingend erforderlich."
-  command -v curl >/dev/null 2>&1 || fail "curl fehlt auf dem Proxmox-Host."
+  [[ -x "$CURL_BIN" ]] || fail "curl fehlt auf dem Proxmox-Host."
   bundle_file="$work_dir/dpl-acron-debian13.tar.gz"
-  curl --fail --location --proto '=https' --tlsv1.2 --output "$bundle_file" "$bundle_url"
+  curl_ca_options=()
+  if [[ -n "$ca_cert" ]]; then
+    curl_ca_options=(--cacert "$ca_cert")
+  fi
+  ( ulimit -f 25600; "$CURL_BIN" --disable --fail --location --proto '=https' \
+    --proto-redir '=https' --tlsv1.2 --connect-timeout 10 --max-time 300 \
+    --speed-limit 1024 --speed-time 30 --max-filesize 26214400 \
+    "${curl_ca_options[@]}" \
+    --output "$bundle_file" "$bundle_url" )
 elif [[ -n "$bundle_path" ]]; then
   bundle_file="$(readlink -f -- "$bundle_path")"
   [[ -f "$bundle_file" ]] || fail "BUNDLE_PATH wurde nicht gefunden: $bundle_path"
@@ -138,7 +201,7 @@ else
   fail "BUNDLE_PATH oder BUNDLE_URL muss gesetzt sein."
 fi
 
-actual_sha256="$(sha256sum "$bundle_file" | awk '{print $1}')"
+actual_sha256="$("$SHA256SUM_BIN" "$bundle_file" | awk '{print $1}')"
 [[ "${actual_sha256,,}" == "${bundle_sha256,,}" ]] || fail "SHA-256-Prüfung des Releases fehlgeschlagen."
 tar -tzf "$bundle_file" >/dev/null
 
@@ -236,14 +299,21 @@ umask 077
 printf '%s' "$admin_password" > "$admin_password_file"
 pct push "$ctid" "$admin_password_file" "$container_password_file"
 pct exec "$ctid" -- chmod 0600 "$container_password_file"
-pct exec "$ctid" -- env \
+if [[ -n "$ca_cert" ]]; then
+  container_ca_file="/root/.dpl-repository-ca-$$.crt"
+  pct push "$ctid" "$ca_cert" "$container_ca_file"
+  pct exec "$ctid" -- chmod 0600 "$container_ca_file"
+fi
+pct exec "$ctid" -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
   "DPL_ADMIN_USERNAME=$admin_username" \
   "DPL_SECURE_COOKIE=1" \
   "DPL_TRUST_PROXY=1" \
   "DPL_UPDATE_BASE_URL=$update_base_url" \
   "DPL_UPDATE_ALLOW_HTTP=$update_allow_http" \
+  "DPL_UPDATE_CA_CERT_SOURCE=$container_ca_file" \
   "DPL_ADMIN_PASSWORD_FILE=$container_password_file" \
-  bash -c 'export DPL_ADMIN_PASSWORD="$(cat "$DPL_ADMIN_PASSWORD_FILE")"; rm -f -- "$DPL_ADMIN_PASSWORD_FILE"; unset DPL_ADMIN_PASSWORD_FILE; exec bash /root/dpl-acron-release/deploy/install-debian13.sh'
+  /bin/bash -p --noprofile --norc -c \
+  'set -Eeuo pipefail; export DPL_ADMIN_PASSWORD="$(/usr/bin/cat -- "$DPL_ADMIN_PASSWORD_FILE")"; /bin/rm -f -- "$DPL_ADMIN_PASSWORD_FILE"; unset DPL_ADMIN_PASSWORD_FILE; exec /bin/bash -p --noprofile --norc /root/dpl-acron-release/deploy/install-debian13.sh'
 unset admin_password
 
 health="$(pct exec "$ctid" -- python3 -c \

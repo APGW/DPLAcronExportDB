@@ -1,4 +1,4 @@
-# Proxmox-Abnahme für DPL2ACRON 3.7.1
+# Proxmox-Abnahme für DPL2ACRON 3.7.2
 
 Diese Abnahme ist für einen ausschließlich zu Testzwecken verwendeten,
 unprivilegierten Debian-13-LXC vorgesehen. Vor einem Upgrade einer vorhandenen
@@ -23,13 +23,17 @@ Testumgebung anpassen:
 
 ```bash
 BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository"
-curl -fsS "$BASE_URL/ct/dpl-acron.sh" -o /tmp/dpl-acron.sh
-echo "EINSTIEGSSKRIPT_SHA256  /tmp/dpl-acron.sh" | sha256sum --check -
+BOOTSTRAP_DIR="$(mktemp -d)"
+chmod 700 "$BOOTSTRAP_DIR"
+trap 'rm -rf -- "$BOOTSTRAP_DIR"' EXIT
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
+  --max-time 60 --max-filesize 1048576 -fsS \
+  "$BASE_URL/ct/dpl-acron.sh" -o "$BOOTSTRAP_DIR/dpl-acron.sh"
+echo "EINSTIEGSSKRIPT_SHA256  $BOOTSTRAP_DIR/dpl-acron.sh" | sha256sum --check -
 
-DPL_BASE_URL="$BASE_URL" \
-CTID=100 \
-WEB_CIDRS="192.168.133.0/24" \
-bash /tmp/dpl-acron.sh
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  DPL_BASE_URL="$BASE_URL" CTID=100 WEB_CIDRS="192.168.133.0/24" \
+  /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/dpl-acron.sh"
 ```
 
 Der Installer fragt das initiale Administratorkennwort verdeckt ab. Nach
@@ -43,9 +47,13 @@ keine Anwendungsdaten. Für die Restoreprüfung wird kurzzeitig eine separate
 MariaDB-Datenbank angelegt und anschließend entfernt.
 
 ```bash
-curl -fsS "$BASE_URL/test/proxmox-acceptance.sh" -o /tmp/proxmox-acceptance.sh
-echo "ABNAHMESKRIPT_SHA256  /tmp/proxmox-acceptance.sh" | sha256sum --check -
-CTID=100 EXPECTED_VERSION=3.7.1 bash /tmp/proxmox-acceptance.sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
+  --max-time 60 --max-filesize 1048576 -fsS \
+  "$BASE_URL/test/proxmox-acceptance.sh" -o "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
+echo "ABNAHMESKRIPT_SHA256  $BOOTSTRAP_DIR/proxmox-acceptance.sh" | sha256sum --check -
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+  CTID=100 EXPECTED_VERSION=3.7.2 \
+  /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
 ```
 
 Geprüft werden:
@@ -53,7 +61,7 @@ Geprüft werden:
 - Debian 13 und unprivilegierter Container
 - Proxmox-Firewall mit eingehender Standardrichtlinie `DROP`
 - aktive und aktivierte Dienste
-- installierte Version 3.7.1
+- installierte Version 3.7.2
 - HTTPS und Zertifikatskette
 - Port 8765 ausschließlich auf Loopback und kein externes MariaDB-Listening
 - root-kontrollierte Konfigurationsdateien und sichere Cookies
@@ -87,14 +95,17 @@ vzdump 100 --mode snapshot --compress zstd
 pct exec 100 -- python3 /opt/dpl-acron/app.py --version
 ```
 
-Anschließend das geprüfte 3.7.1-Einstiegsskript in den Container kopieren und
+Anschließend das geprüfte 3.7.2-Einstiegsskript in den Container kopieren und
 ausführen. Die bei der Erstinstallation gespeicherte Datei
 `/etc/dpl-acron/update.env` liefert die interne Repository-Adresse:
 
 ```bash
-pct push 100 /tmp/dpl-acron.sh /tmp/dpl-acron-update.sh
-pct exec 100 -- bash /tmp/dpl-acron-update.sh
-CTID=100 EXPECTED_VERSION=3.7.1 bash /tmp/proxmox-acceptance.sh
+pct push 100 "$BOOTSTRAP_DIR/dpl-acron.sh" /root/dpl-acron-update.sh
+pct exec 100 -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+  /bin/bash -p --noprofile --norc /root/dpl-acron-update.sh
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
+  CTID=100 EXPECTED_VERSION=3.7.2 \
+  /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
 ```
 
 Bei einem fehlgeschlagenen Upgrade bleiben Anwendung und Nginx absichtlich

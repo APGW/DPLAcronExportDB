@@ -1,12 +1,12 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
 
 # Nicht-destruktive Abnahme einer installierten DPL2ACRON-Testinstanz.
 # Ausführung auf dem Proxmox-VE-Host:
-#   CTID=100 EXPECTED_VERSION=3.7.1 bash proxmox-acceptance.sh
+#   CTID=100 EXPECTED_VERSION=3.7.2 /bin/bash -p --noprofile --norc proxmox-acceptance.sh
 
 ctid="${CTID:-}"
-expected_version="${EXPECTED_VERSION:-3.7.1}"
+expected_version="${EXPECTED_VERSION:-3.7.2}"
 checks=0
 temporary_dir=""
 restore_database=""

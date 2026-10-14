@@ -41,7 +41,8 @@ sha256sum --check dpl-acron-debian13.tar.gz.sha256
 mkdir -p ~/dpl-acron
 tar -xzf /tmp/dpl-acron-debian13.tar.gz -C ~/dpl-acron
 cd ~/dpl-acron
-sudo bash deploy/install-debian13.sh
+sudo /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  /bin/bash -p --noprofile --norc deploy/install-debian13.sh
 ```
 
 Bei der ersten Installation fragt der Installer das Administratorkennwort
@@ -142,7 +143,7 @@ curl http://127.0.0.1:8765/api/health
 Erwartete Antwort:
 
 ```json
-{"status":"ok","version":"3.7.1"}
+{"status":"ok","version":"3.7.2"}
 ```
 
 Wichtige Pfade:

@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import unittest
+import re
+import subprocess
+import sys
 from pathlib import Path
 
 
@@ -211,7 +214,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('[[ -n "$web_cidrs" ]]', script)
         self.assertIn('$script_dir/dpl-acron-debian13.tar.gz', script)
         self.assertIn("policy_in: DROP", script)
-        self.assertIn('sha256sum "$bundle_file"', script)
+        self.assertIn('"$SHA256SUM_BIN" "$bundle_file"', script)
         self.assertIn("pveam download", script)
         self.assertIn("pct push", script)
         self.assertIn("install-debian13.sh", script)
@@ -224,7 +227,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("report_error", script)
         self.assertIn("Übertrage das geprüfte Release", script)
         self.assertIn("Starte die Debian-13-Anwendungsinstallation", script)
-        self.assertLess(script.index("unset DPL_ADMIN_PASSWORD"), script.index("command -v pct"))
+        self.assertLess(script.index("unset DPL_ADMIN_PASSWORD"), script.index("readonly BASH_BIN"))
         self.assertIn("pct template", guide)
         self.assertIn("`443/tcp`", guide)
         self.assertIn("`3306`", guide)
@@ -275,7 +278,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.7.1", guide)
+        self.assertIn("EXPECTED_VERSION=3.7.2", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -285,25 +288,27 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertNotIn("community-scripts/core/main", template)
         self.assertNotIn("source <(", template)
         self.assertIn('APP="dpl-acron"', template)
-        self.assertIn('exec bash "$installer"', template)
-        self.assertIn('exec bash "$source_dir/deploy/install-debian13.sh"', template)
+        self.assertNotIn('exec bash "$installer"', template)
+        self.assertNotIn('exec bash "$source_dir/deploy/install-debian13.sh"', template)
+        self.assertIn('"$ENV_BIN" -i', template)
+        self.assertIn('"$BASH_BIN" -p --noprofile --norc', template)
         self.assertIn("update_mode=1", template)
         self.assertIn('chmod 0700 "$work_dir"', template)
-        self.assertLess(template.index("sha256sum --check --status"), template.index('exec bash "$installer"'))
+        self.assertLess(template.index('"$SHA256SUM_BIN" --check --status'), template.index('"$BASH_BIN" -p --noprofile --norc "$installer"'))
         self.assertIn("unset DPL_ADMIN_PASSWORD", template)
         self.assertNotIn("export DPL_ADMIN_PASSWORD", template)
-        self.assertLess(template.index("unset DPL_ADMIN_PASSWORD"), template.index("command -v pct"))
+        self.assertLess(template.index("unset DPL_ADMIN_PASSWORD"), template.index("update_mode=0"))
         self.assertIn("/etc/dpl-acron/update.env", template)
         self.assertIn('[[ "$update_mode" -eq 0 ]]', template)
         self.assertIn('[[ "$DPL_BASE_URL" == https://*', template)
         self.assertIn('DPL_ALLOW_HTTP', template)
         self.assertIn("@@BUNDLE_SHA256@@", template)
-        self.assertIn('source /dev/stdin <<<"$FUNCTIONS_FILE_PATH"', install)
+        self.assertIn('source /dev/stdin <<<"$functions_file_path"', install)
         self.assertIn("setting_up_container", install)
         self.assertIn("network_check", install)
         self.assertIn("update_os", install)
         self.assertIn("mariadb-server", install)
-        self.assertIn("sha256sum --check --status", install)
+        self.assertIn('"$SHA256SUM_BIN" --check --status', install)
         self.assertIn("install-debian13.sh", install)
         self.assertIn("cleanup_lxc", install)
         self.assertIn("build-bundle.ps1", builder)
@@ -326,8 +331,113 @@ class DebianDeploymentTest(unittest.TestCase):
             "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository",
             entry,
         )
-        self.assertIn("sha256sum --check --status", entry)
-        self.assertIn("pvesh get /cluster/nextid", entry)
+        self.assertIn('"$SHA256SUM_BIN" --check --status', entry)
+        self.assertIn('$PYESH_BIN get /cluster/nextid', entry)
+
+    def test_privileged_installers_clear_ambient_execution_state(self) -> None:
+        scripts = [
+            "install-proxmox-entry.sh",
+            "community-ct.sh",
+            "proxmox-install-lxc.sh",
+            "install-debian13.sh",
+        ]
+        for name in scripts:
+            with self.subTest(script=name):
+                content = (ROOT / "deploy" / name).read_text(encoding="utf-8")
+                self.assertTrue(content.startswith("#!/bin/bash -p\n"))
+                self.assertIn("PYTHONPATH PYTHONHOME PYTHONSTARTUP", content)
+                self.assertIn("PATH=/usr/sbin:/usr/bin:/sbin:/bin", content)
+        entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
+        community = (ROOT / "deploy" / "community-ct.sh").read_text(encoding="utf-8")
+        debian = (ROOT / "deploy" / "install-debian13.sh").read_text(encoding="utf-8")
+        self.assertIn('"$PYTHON_BIN" -I -', entry)
+        self.assertIn('"$PYTHON_BIN" -I -', community)
+        self.assertNotIn("PYTHONPATH=", debian)
+
+        community_install = (ROOT / "deploy" / "community-install.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertLess(
+            community_install.index("builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin"),
+            community_install.index('source /dev/stdin <<<"$functions_file_path"'),
+        )
+        self.assertLess(
+            community_install.index("builtin unset BASH_ENV ENV"),
+            community_install.index("setting_up_container"),
+        )
+
+    def test_private_repository_ca_is_used_and_persisted(self) -> None:
+        community = (ROOT / "deploy" / "community-ct.sh").read_text(encoding="utf-8")
+        proxmox = (ROOT / "deploy" / "proxmox-install-lxc.sh").read_text(encoding="utf-8")
+        debian = (ROOT / "deploy" / "install-debian13.sh").read_text(encoding="utf-8")
+
+        self.assertIn('DPL_CA_CERT) DPL_CA_CERT="$value"', community)
+        self.assertIn('"DPL_CA_CERT=$DPL_CA_CERT"', community)
+        self.assertIn('"DPL_UPDATE_CA_CERT_SOURCE=$DPL_CA_CERT"', community)
+        self.assertIn('curl_ca_options=(--cacert "$ca_cert")', proxmox)
+        self.assertIn('pct push "$ctid" "$ca_cert" "$container_ca_file"', proxmox)
+        self.assertIn('"DPL_UPDATE_CA_CERT_SOURCE=$container_ca_file"', proxmox)
+        self.assertIn('repository_ca="$config_dir/repository-ca.crt"', debian)
+        self.assertIn('update_lines+=("DPL_CA_CERT=$repository_ca")', debian)
+
+    def test_all_release_downloads_are_resource_bounded(self) -> None:
+        for name in (
+            "install-proxmox-entry.sh",
+            "community-ct.sh",
+            "community-install.sh",
+            "proxmox-install-lxc.sh",
+        ):
+            with self.subTest(script=name):
+                content = (ROOT / "deploy" / name).read_text(encoding="utf-8")
+                self.assertIn("--connect-timeout", content)
+                self.assertIn("--max-time", content)
+                self.assertIn("--speed-limit", content)
+                self.assertIn("--speed-time", content)
+                self.assertIn("--max-filesize", content)
+                self.assertIn("ulimit -f", content)
+
+    def test_forwardable_installer_cidr_policy_is_fail_closed(self) -> None:
+        entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
+        match = re.search(
+            r'web_cidrs="\$\("\$PYTHON_BIN" -I - "\$web_cidrs" "\$allow_public_cidrs" <<\'PY\'\n(.*?)\nPY\n\)"',
+            entry,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        validator = match.group(1)
+
+        def validate(value: str, allow_public: str = "0") -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [sys.executable, "-I", "-", value, allow_public],
+                input=validator,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        for value, expected in (
+            ("192.168.10.0/24", "192.168.10.0/24"),
+            ("10.0.0.0/8, 100.64.0.0/10", "10.0.0.0/8,100.64.0.0/10"),
+            ("fd00:1234::/48", "fd00:1234::/48"),
+        ):
+            with self.subTest(value=value):
+                result = validate(value)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual(expected, result.stdout.strip())
+
+        for value, allow_public in (
+            ("0.0.0.0/0", "1"),
+            ("1.2.3.4/24", "1"),
+            ("10.0.0.0/8,", "0"),
+            ("127.0.0.0/8", "0"),
+            ("8.0.0.0/7", "1"),
+        ):
+            with self.subTest(value=value):
+                self.assertNotEqual(0, validate(value, allow_public).returncode)
+
+        public = validate("8.8.8.0/24", "1")
+        self.assertEqual(0, public.returncode, public.stderr)
+        self.assertEqual("8.8.8.0/24", public.stdout.strip())
 
 
 if __name__ == "__main__":

@@ -42,11 +42,14 @@ In der Proxmox-Browserkonsole als `root` genügt anschließend ein eingefügter
 Befehl:
 
 ```bash
-curl -fsS https://software.intern/dpl-acron/ct/dpl-acron.sh -o /tmp/dpl-acron-community.sh && \
-echo "COMMUNITY_SCRIPT_SHA256  /tmp/dpl-acron-community.sh" | sha256sum --check - && \
-DPL_BASE_URL="https://software.intern/dpl-acron" \
-WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-bash /tmp/dpl-acron-community.sh
+curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
+  --max-time 60 --max-filesize 1048576 -fsS \
+  https://software.intern/dpl-acron/ct/dpl-acron.sh -o /root/dpl-acron-community.sh && \
+echo "COMMUNITY_SCRIPT_SHA256  /root/dpl-acron-community.sh" | sha256sum --check - && \
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  DPL_BASE_URL="https://software.intern/dpl-acron" \
+  WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
+  /bin/bash -p --noprofile --norc /root/dpl-acron-community.sh
 ```
 
 Vor der Containererstellung wird das Administratorkennwort verdeckt zweimal
@@ -65,12 +68,13 @@ folgenden Downloads angegeben:
 ```bash
 curl --cacert /usr/local/share/ca-certificates/firma.crt -fsS \
   https://software.intern/dpl-acron/ct/dpl-acron.sh \
-  -o /tmp/dpl-acron-community.sh
-echo "COMMUNITY_SCRIPT_SHA256  /tmp/dpl-acron-community.sh" | sha256sum --check -
-DPL_BASE_URL="https://software.intern/dpl-acron" \
-DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
-WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-bash /tmp/dpl-acron-community.sh
+  -o /root/dpl-acron-community.sh
+echo "COMMUNITY_SCRIPT_SHA256  /root/dpl-acron-community.sh" | sha256sum --check -
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  DPL_BASE_URL="https://software.intern/dpl-acron" \
+  DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
+  WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
+  /bin/bash -p --noprofile --norc /root/dpl-acron-community.sh
 ```
 
 `curl -k` soll nicht verwendet werden, weil dadurch die Serveridentität nicht
@@ -90,12 +94,14 @@ der Proxmox-Shell wird das Community Script zunächst nach `/tmp` geladen, gepr�
 danach ausgeführt:
 
 ```bash
-curl -fsS http://WINDOWS-IP:8088/ct/dpl-acron.sh -o /tmp/dpl-acron-community.sh && \
-echo "COMMUNITY_SCRIPT_SHA256  /tmp/dpl-acron-community.sh" | sha256sum --check - && \
-DPL_ALLOW_HTTP=1 \
-DPL_BASE_URL="http://WINDOWS-IP:8088" \
-WEB_CIDRS="IHR-LAN/CIDR,IHR-VPN/CIDR" \
-bash /tmp/dpl-acron-community.sh
+curl --proto '=http' --proto-redir '=http' --connect-timeout 10 --max-time 60 \
+  --max-filesize 1048576 -fsS \
+  http://WINDOWS-IP:8088/ct/dpl-acron.sh -o /root/dpl-acron-community.sh && \
+echo "COMMUNITY_SCRIPT_SHA256  /root/dpl-acron-community.sh" | sha256sum --check - && \
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \
+  WEB_CIDRS="IHR-LAN/CIDR,IHR-VPN/CIDR" \
+  /bin/bash -p --noprofile --norc /root/dpl-acron-community.sh
 ```
 
 Auch diese Variante fragt das Administratorkennwort interaktiv und verdeckt ab.
@@ -121,11 +127,10 @@ Auf dem Proxmox-Host installieren:
 
 ```bash
 chmod 700 /root/proxmox-install-lxc.sh
-CTID=3072 \
-WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-SSH_CIDRS="192.168.133.0/24" \
-SSH_PUBLIC_KEYS="/root/.ssh/authorized_keys" \
-bash /root/proxmox-install-lxc.sh
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  CTID=3072 WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
+  SSH_CIDRS="192.168.133.0/24" SSH_PUBLIC_KEYS="/root/.ssh/authorized_keys" \
+  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
 ```
 
 Das Skript fragt das Administratorkennwort verdeckt ab und überträgt es nur für
@@ -144,28 +149,28 @@ Standardmäßig verwendet das Skript DHCP, `local-lvm`, `local` und `vmbr0`. Ein
 statische IP und abweichende Speicher lassen sich so setzen:
 
 ```bash
-CTID=3072 \
-CT_HOSTNAME=dpl-acron \
-ROOT_STORAGE=local-lvm \
-TEMPLATE_STORAGE=local \
-BRIDGE=vmbr0 \
-IP_CONFIG=192.168.133.130/24 \
-GATEWAY=192.168.133.2 \
-WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-SSH_CIDRS="192.168.133.0/24" \
-bash /root/proxmox-install-lxc.sh
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  CTID=3072 CT_HOSTNAME=dpl-acron ROOT_STORAGE=local-lvm TEMPLATE_STORAGE=local \
+  BRIDGE=vmbr0 IP_CONFIG=192.168.133.130/24 GATEWAY=192.168.133.2 \
+  WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" SSH_CIDRS="192.168.133.0/24" \
+  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
 ```
 
 Das Release kann alternativ von einer internen HTTPS-Adresse geladen werden.
 Die erwartete Prüfsumme muss dabei ausdrücklich angegeben werden:
 
 ```bash
-CTID=3072 \
-WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-BUNDLE_URL="https://software.intern/dpl-acron-debian13.tar.gz" \
-BUNDLE_SHA256="HIER_64_HEX_ZEICHEN_EINTRAGEN" \
-bash /root/proxmox-install-lxc.sh
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  CTID=3072 WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
+  BUNDLE_URL="https://software.intern/dpl-acron-debian13.tar.gz" \
+  BUNDLE_SHA256="HIER_64_HEX_ZEICHEN_EINTRAGEN" \
+  DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
+  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
 ```
+
+`DPL_CA_CERT` ist nur bei einer privaten Zertifizierungsstelle erforderlich.
+Das geprüfte Zertifikat wird root-geschützt in den Container übernommen und
+für spätere Updates in `/etc/dpl-acron/update.env` hinterlegt.
 
 Das Skript bricht ab, wenn die CT-ID bereits vorhanden ist, die Prüfsumme nicht
 passt, kein Debian-13-Template verfügbar ist oder der Container die

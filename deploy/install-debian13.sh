@@ -1,11 +1,21 @@
-#!/usr/bin/env bash
+#!/bin/bash -p
 set -Eeuo pipefail
 
 admin_password_input="${DPL_ADMIN_PASSWORD:-}"
-unset DPL_ADMIN_PASSWORD
+update_base_url="${DPL_UPDATE_BASE_URL:-}"
+update_allow_http="${DPL_UPDATE_ALLOW_HTTP:-0}"
+update_ca_cert_source="${DPL_UPDATE_CA_CERT_SOURCE:-}"
+for function_name in $(builtin compgen -A function); do
+  builtin unset -f "$function_name"
+done
+builtin unset DPL_ADMIN_PASSWORD BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+builtin export IFS=$' \t\n'
+builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
+readonly PYTHON_BIN=/usr/bin/python3
 
 if [[ "${EUID}" -ne 0 ]]; then
-  echo "Bitte mit sudo ausführen: sudo bash deploy/install-debian13.sh" >&2
+  echo "Bitte mit sudo und bereinigter Umgebung gemäß DEPLOY_DEBIAN13.md ausführen." >&2
   exit 1
 fi
 
@@ -25,9 +35,6 @@ service_was_active=0
 migration_privileges_granted=0
 rollback_dir=""
 database_backup=""
-update_base_url="${DPL_UPDATE_BASE_URL:-}"
-update_allow_http="${DPL_UPDATE_ALLOW_HTTP:-0}"
-
 if [[ ! -f "$auth_env" && -z "$admin_password_input" ]]; then
   if [[ -r /dev/tty ]]; then
     read -r -s -p "Initiales DPL2ACRON-Administratorkennwort: " admin_password_input </dev/tty
@@ -82,22 +89,22 @@ if [[ -r /etc/os-release ]]; then
 fi
 
 packages_missing=0
-command -v python3 >/dev/null 2>&1 || packages_missing=1
+[[ -x "$PYTHON_BIN" ]] || packages_missing=1
 command -v mariadbd >/dev/null 2>&1 || packages_missing=1
 command -v mariadb >/dev/null 2>&1 || packages_missing=1
 command -v mariadb-dump >/dev/null 2>&1 || packages_missing=1
 command -v runuser >/dev/null 2>&1 || packages_missing=1
 command -v nginx >/dev/null 2>&1 || packages_missing=1
 command -v openssl >/dev/null 2>&1 || packages_missing=1
-python3 -c 'import mariadb' >/dev/null 2>&1 || packages_missing=1
+"$PYTHON_BIN" -I -c 'import mariadb' >/dev/null 2>&1 || packages_missing=1
 if [[ "$packages_missing" -eq 1 ]]; then
   export DEBIAN_FRONTEND=noninteractive
   apt-get update
   apt-get install -y --no-install-recommends python3 python3-mariadb-connector mariadb-server mariadb-client util-linux ca-certificates gzip nginx openssl
 fi
 
-python3 -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else "Python 3.11 oder neuer ist erforderlich.")'
-python3 -c 'import mariadb; print("MariaDB Connector/Python:", mariadb.__version__)'
+"$PYTHON_BIN" -I -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else "Python 3.11 oder neuer ist erforderlich.")'
+"$PYTHON_BIN" -I -c 'import mariadb; print("MariaDB Connector/Python:", mariadb.__version__)'
 
 systemctl enable --now mariadb.service
 systemctl is-active --quiet mariadb.service || {
@@ -135,8 +142,8 @@ if [[ ! -d "$source_dir/dpl_export" ]]; then
 fi
 
 echo "Prüfe Release vor der Installation ..."
-PYTHONDONTWRITEBYTECODE=1 python3 "$source_dir/app.py" --version
-PYTHONDONTWRITEBYTECODE=1 python3 - "$source_dir" <<'PY'
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" "$source_dir/app.py" --version
+PYTHONDONTWRITEBYTECODE=1 "$PYTHON_BIN" -I - "$source_dir" <<'PY'
 import json
 import sys
 from pathlib import Path
@@ -219,8 +226,9 @@ if [[ ! -f "$auth_env" || -n "$admin_password_input" ]]; then
   admin_password="$admin_password_input"
   password_hash="$(
     printf '%s' "$admin_password" |
-      PYTHONPATH="$install_dir" python3 -c \
-        'import sys; from dpl_export.auth import hash_password; print(hash_password(sys.stdin.read()))'
+      "$PYTHON_BIN" -I -c \
+        'import sys; sys.path.insert(0, sys.argv[1]); from dpl_export.auth import hash_password; print(hash_password(sys.stdin.read()))' \
+        "$install_dir"
   )"
   install -o root -g "$service_group" -m 0640 /dev/null "$auth_env"
   printf '%s\n' \
@@ -244,10 +252,36 @@ if [[ -n "$update_base_url" ]]; then
     echo "Ein HTTP-Repository erfordert DPL_UPDATE_ALLOW_HTTP=1." >&2
     exit 1
   fi
+  repository_ca="$config_dir/repository-ca.crt"
+  if [[ -n "$update_ca_cert_source" ]]; then
+    [[ "$update_ca_cert_source" == /* && -f "$update_ca_cert_source" && ! -L "$update_ca_cert_source" ]] || {
+      echo "DPL_UPDATE_CA_CERT_SOURCE muss eine absolute, reguläre CA-Datei sein." >&2
+      exit 1
+    }
+    [[ "$(stat -c '%u' -- "$update_ca_cert_source")" == "0" ]] || {
+      echo "DPL_UPDATE_CA_CERT_SOURCE muss root gehören." >&2
+      exit 1
+    }
+    ca_mode="$(stat -c '%a' -- "$update_ca_cert_source")"
+    (( (8#$ca_mode & 8#022) == 0 )) || {
+      echo "DPL_UPDATE_CA_CERT_SOURCE darf nicht gruppen-/weltbeschreibbar sein." >&2
+      exit 1
+    }
+    if [[ "$update_ca_cert_source" != "$repository_ca" ]]; then
+      install -o root -g root -m 0644 "$update_ca_cert_source" "$repository_ca"
+    fi
+  elif [[ ! -f "$repository_ca" ]]; then
+    repository_ca=""
+  fi
   install -o root -g root -m 0600 /dev/null "$config_dir/update.env"
-  printf '%s\n' \
+  update_lines=(
     "DPL_BASE_URL=$update_base_url" \
-    "DPL_ALLOW_HTTP=$update_allow_http" > "$config_dir/update.env"
+    "DPL_ALLOW_HTTP=$update_allow_http"
+  )
+  if [[ -n "$repository_ca" ]]; then
+    update_lines+=("DPL_CA_CERT=$repository_ca")
+  fi
+  printf '%s\n' "${update_lines[@]}" > "$config_dir/update.env"
 fi
 
 # Auch bestehende Installationen werden auf den verpflichtenden lokalen
@@ -311,7 +345,7 @@ systemctl is-active --quiet nginx.service || {
 }
 
 if [[ ! -f "$database_env" ]]; then
-  db_password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
+  db_password="$("$PYTHON_BIN" -I -c 'import secrets; print(secrets.token_urlsafe(32))')"
   db_socket="$(mariadb --batch --skip-column-names -e 'SELECT @@socket')"
   mariadb --protocol=socket <<SQL
 CREATE DATABASE IF NOT EXISTS dpl_acron CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
@@ -386,7 +420,7 @@ health_url="http://127.0.0.1:$DPL_PORT/api/health"
 
 healthy=0
 for _ in {1..15}; do
-  if python3 -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=2).read()' "$health_url" >/dev/null 2>&1; then
+  if "$PYTHON_BIN" -I -c 'import sys, urllib.request; urllib.request.urlopen(sys.argv[1], timeout=2).read()' "$health_url" >/dev/null 2>&1; then
     healthy=1
     break
   fi

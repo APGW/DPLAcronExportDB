@@ -17,7 +17,7 @@ ROOT = Path(__file__).resolve().parents[1]
 class RuntimeConfigurationTest(unittest.TestCase):
     def test_public_and_runtime_versions_are_identical(self) -> None:
         self.assertEqual("DPL2ACRON", APP_NAME)
-        self.assertEqual("3.7.1", APP_VERSION)
+        self.assertEqual("3.7.2", APP_VERSION)
         self.assertEqual(APP_VERSION, __version__)
 
     def test_request_timeout_is_bounded(self) -> None:
