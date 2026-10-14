@@ -36,13 +36,18 @@ ssh BENUTZER@CT-IP
 Auf Debian installieren:
 
 ```bash
-cd /tmp
-sha256sum --check dpl-acron-debian13.tar.gz.sha256
-mkdir -p ~/dpl-acron
-tar -xzf /tmp/dpl-acron-debian13.tar.gz -C ~/dpl-acron
-cd ~/dpl-acron
-sudo /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
-  /bin/bash -p --noprofile --norc deploy/install-debian13.sh
+(
+  set -Eeuo pipefail
+  umask 077
+  INSTALL_DIR="$(/usr/bin/mktemp -d)"
+  trap '/bin/rm -rf -- "$INSTALL_DIR"' EXIT
+  cd /tmp
+  /usr/bin/sha256sum --check --status dpl-acron-debian13.tar.gz.sha256
+  /usr/bin/tar -xzf /tmp/dpl-acron-debian13.tar.gz -C "$INSTALL_DIR"
+  cd "$INSTALL_DIR"
+  sudo /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+    /bin/bash -p --noprofile --norc deploy/install-debian13.sh
+)
 ```
 
 Bei der ersten Installation fragt der Installer das Administratorkennwort
@@ -143,7 +148,7 @@ curl http://127.0.0.1:8765/api/health
 Erwartete Antwort:
 
 ```json
-{"status":"ok","version":"3.7.2"}
+{"status":"ok","version":"3.7.3"}
 ```
 
 Wichtige Pfade:

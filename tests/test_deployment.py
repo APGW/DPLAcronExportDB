@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-import unittest
 import re
 import subprocess
 import sys
+import unittest
 from pathlib import Path
 
 
@@ -278,7 +278,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.7.2", guide)
+        self.assertIn("EXPECTED_VERSION=3.7.3", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -323,9 +323,14 @@ class DebianDeploymentTest(unittest.TestCase):
     def test_forwardable_installer_is_published_and_verifies_the_entrypoint(self) -> None:
         builder = (ROOT / "deploy" / "build-internal-repository.ps1").read_text(encoding="utf-8")
         entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
+        bootstrap = (ROOT / "deploy" / "bootstrap-proxmox.sh").read_text(encoding="utf-8")
 
         self.assertIn('Join-Path $repositoryRoot "install-proxmox.sh"', builder)
         self.assertIn("proxmox_entry_sha256", builder)
+        self.assertIn('Join-Path $repositoryRoot "bootstrap-proxmox.sh"', builder)
+        self.assertIn("proxmox_bootstrap_sha256", builder)
+        self.assertIn('Replace("@@ENTRY_SHA256@@", $entryHash)', builder)
+        self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
             "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository",
@@ -333,9 +338,47 @@ class DebianDeploymentTest(unittest.TestCase):
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)
         self.assertIn('$PYESH_BIN get /cluster/nextid', entry)
+        self.assertTrue(bootstrap.startswith("#!/bin/bash -p\nset -Eeuo pipefail\n"))
+        self.assertIn("@@ENTRY_SHA256@@", bootstrap)
+        self.assertIn("@@BASE_URL@@", bootstrap)
+        self.assertIn('"$CURL_BIN" --disable', bootstrap)
+        self.assertIn('"$SHA256SUM_BIN" --check --status', bootstrap)
+        self.assertLess(
+            bootstrap.index('"$SHA256SUM_BIN" --check --status'),
+            bootstrap.index('"${clean_environment[@]}" "$BASH_BIN"'),
+        )
+
+    def test_operator_bootstrap_snippets_are_fail_closed(self) -> None:
+        for name in ("DEPLOY_DEBIAN13.md", "PROXMOX_CT.md", "PROXMOX_TEST.md"):
+            guide = (ROOT / name).read_text(encoding="utf-8")
+            relevant_blocks = [
+                block
+                for block in re.findall(r"```bash\n(.*?)\n```", guide, re.DOTALL)
+                if "sha256sum" in block and "/bin/bash" in block
+            ]
+            self.assertTrue(relevant_blocks, name)
+            for block in relevant_blocks:
+                with self.subTest(guide=name, block=block[:60]):
+                    self.assertIn("set -Eeuo pipefail", block)
+                    self.assertIn("/usr/bin/sha256sum --check --status", block)
+                    self.assertLess(block.index("sha256sum"), block.index("/bin/bash"))
+                    self.assertIn("/usr/bin/mktemp -d", block)
+                    self.assertIn("trap '", block)
+                    if "curl" in block:
+                        self.assertIn("/usr/bin/curl --disable", block)
+
+    def test_release_builder_renders_security_sensitive_guides_from_sources(self) -> None:
+        builder = (ROOT / "deploy" / "build-internal-repository.ps1").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('$proxmoxCtGuide.Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
+        self.assertIn('$proxmoxCtGuide.Replace("COMMUNITY_SCRIPT_SHA256", $communityHash)', builder)
+        self.assertIn('$proxmoxTestGuide.Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
+        self.assertIn('$proxmoxTestGuide.Replace("ABNAHMESKRIPT_SHA256", $acceptanceTestHash)', builder)
 
     def test_privileged_installers_clear_ambient_execution_state(self) -> None:
         scripts = [
+            "bootstrap-proxmox.sh",
             "install-proxmox-entry.sh",
             "community-ct.sh",
             "proxmox-install-lxc.sh",

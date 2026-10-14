@@ -6,7 +6,7 @@ set -Eeuo pipefail
 # Release-Bau festgeschriebene SHA-256-Prüfsumme geprüft.
 
 base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository}"
-community_sha256="4fc5c05c5ad18dc1bedbb9d5a833c30f4eda4fbb21cdc247f3ddfb56437e7095"
+community_sha256="dc7d5224cdc85432a869b4514971eb4ac02eadfee58a9c66d5b2563ee677d371"
 web_cidrs="${WEB_CIDRS:-}"
 ctid="${CTID:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"

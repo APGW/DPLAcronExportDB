@@ -35,8 +35,6 @@ $jsonDirectory = Join-Path $repositoryRoot "json"
 $docsDirectory = Join-Path $repositoryRoot "docs"
 $testDirectory = Join-Path $repositoryRoot "test"
 New-Item -ItemType Directory -Force -Path $releaseDirectory, $ctDirectory, $installDirectory, $jsonDirectory, $docsDirectory, $testDirectory | Out-Null
-Copy-Item -LiteralPath (Join-Path $projectRoot "PROXMOX_CT.md") -Destination (Join-Path $docsDirectory "PROXMOX_CT.md") -Force
-Copy-Item -LiteralPath (Join-Path $projectRoot "PROXMOX_TEST.md") -Destination (Join-Path $docsDirectory "PROXMOX_TEST.md") -Force
 
 $publishedBundle = Join-Path $releaseDirectory "dpl-acron-debian13.tar.gz"
 $publishedInstaller = Join-Path $releaseDirectory "proxmox-install-lxc.sh"
@@ -60,10 +58,28 @@ $entryScript = $entryTemplate.Replace("@@COMMUNITY_SHA256@@", $communityHash)
 $entryPath = Join-Path $repositoryRoot "install-proxmox.sh"
 [IO.File]::WriteAllText($entryPath, $entryScript, $utf8NoBom)
 $entryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $entryPath).Hash.ToLowerInvariant()
+$bootstrapTemplate = Get-Content -LiteralPath (Join-Path $PSScriptRoot "bootstrap-proxmox.sh") -Raw
+$bootstrapScript = $bootstrapTemplate.Replace("@@BASE_URL@@", $InternalBaseUrl.TrimEnd('/'))
+$bootstrapScript = $bootstrapScript.Replace("@@ENTRY_SHA256@@", $entryHash)
+$bootstrapPath = Join-Path $repositoryRoot "bootstrap-proxmox.sh"
+[IO.File]::WriteAllText($bootstrapPath, $bootstrapScript, $utf8NoBom)
+$bootstrapHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $bootstrapPath).Hash.ToLowerInvariant()
 $containerInstallerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $containerInstaller).Hash.ToLowerInvariant()
 $acceptanceTest = Join-Path $testDirectory "proxmox-acceptance.sh"
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "proxmox-acceptance.sh") -Destination $acceptanceTest -Force
 $acceptanceTestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $acceptanceTest).Hash.ToLowerInvariant()
+
+# Sicherheitsrelevante Bedienungsanleitungen werden aus einer Quelle erzeugt.
+# Dadurch stammen die dort verwendeten Prüfsummen immer aus genau diesem Build.
+$proxmoxCtGuide = Get-Content -LiteralPath (Join-Path $projectRoot "PROXMOX_CT.md") -Raw
+$proxmoxCtGuide = $proxmoxCtGuide.Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)
+$proxmoxCtGuide = $proxmoxCtGuide.Replace("COMMUNITY_SCRIPT_SHA256", $communityHash)
+[IO.File]::WriteAllText((Join-Path $docsDirectory "PROXMOX_CT.md"), $proxmoxCtGuide, $utf8NoBom)
+$proxmoxTestGuide = Get-Content -LiteralPath (Join-Path $projectRoot "PROXMOX_TEST.md") -Raw
+$proxmoxTestGuide = $proxmoxTestGuide.Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)
+$proxmoxTestGuide = $proxmoxTestGuide.Replace("EINSTIEGSSKRIPT_SHA256", $communityHash)
+$proxmoxTestGuide = $proxmoxTestGuide.Replace("ABNAHMESKRIPT_SHA256", $acceptanceTestHash)
+[IO.File]::WriteAllText((Join-Path $docsDirectory "PROXMOX_TEST.md"), $proxmoxTestGuide, $utf8NoBom)
 
 $metadata = [ordered]@{
     name = "DPL2ACRON"
@@ -115,6 +131,8 @@ $manifest = [ordered]@{
     community_script_sha256 = $communityHash
     proxmox_entry = "install-proxmox.sh"
     proxmox_entry_sha256 = $entryHash
+    proxmox_bootstrap = "bootstrap-proxmox.sh"
+    proxmox_bootstrap_sha256 = $bootstrapHash
     community_install = "install/dpl-acron-install.sh"
     community_install_sha256 = $containerInstallerHash
     acceptance_test = "test/proxmox-acceptance.sh"
@@ -129,4 +147,6 @@ Write-Host "Community Script: $communityPath"
 Write-Host "Community Script SHA-256: $communityHash"
 Write-Host "Weitergabe-Installer: $entryPath"
 Write-Host "Weitergabe-Installer SHA-256: $entryHash"
+Write-Host "Kanonischer Proxmox-Bootstrap: $bootstrapPath"
+Write-Host "Kanonischer Proxmox-Bootstrap SHA-256: $bootstrapHash"
 Write-Host "Veröffentlichen Sie den gesamten Ordner unverändert über internes HTTPS."

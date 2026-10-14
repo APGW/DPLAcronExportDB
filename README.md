@@ -5,7 +5,7 @@ einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemei
 Korrektur bereit und erzeugt getrennte ACRON- und
 WINCC60-Provider-Exporte.
 
-## Version 3.7.2
+## Version 3.7.3
 
 - prüft eine DPL vor der Übernahme und zeigt neue, geänderte sowie entfallene Datensätze an
 - bewahrt vorherige Projektversionen schreibgeschützt und auswählbar auf
@@ -62,9 +62,10 @@ Die reproduzierbare technische und manuelle Testabnahme steht in
 Der konkrete Abnahmelauf mit der Tibaum-DPL ist in [TIBAUM_CHECK.md](TIBAUM_CHECK.md) dokumentiert.
 
 Für die direkte Neuinstallation auf einem Proxmox-Host wird zusätzlich
-`dist/internal-repository/install-proxmox.sh` veröffentlicht. Das Skript fragt
-das erlaubte LAN-/VPN-Netz ab, wählt eine freie CT-ID und prüft den eigentlichen
-Installer vor der Ausführung gegen die im Release festgeschriebene SHA-256-Prüfsumme.
+`dist/internal-repository/bootstrap-proxmox.sh` veröffentlicht. Dieser
+kanonische Bootstrap prüft zuerst `install-proxmox.sh` gegen die beim Build
+festgeschriebene SHA-256-Prüfsumme. Erst danach fragt der Installer das erlaubte
+LAN-/VPN-Netz ab und wählt eine freie CT-ID.
 
 ## Datenbank
 

@@ -38,18 +38,35 @@ einer internen HTTPS-Adresse veröffentlichen, zum Beispiel:
 https://software.intern/dpl-acron/
 ```
 
-In der Proxmox-Browserkonsole als `root` genügt anschließend ein eingefügter
-Befehl:
+Der Build erzeugt zusätzlich `bootstrap-proxmox.sh`. Dieses Skript ist die
+kanonische äußere Vertrauensgrenze: Es lädt `install-proxmox.sh` in ein neues
+privates Verzeichnis, prüft den beim Build eingebetteten SHA-256-Wert und führt
+den Installer nur bei erfolgreicher Prüfung aus. Seine eigene Prüfsumme steht
+in `release.json` und muss über einen vertrauenswürdigen Freigabekanal bezogen
+werden.
+
+In der Proxmox-Browserkonsole als `root` wird der Bootstrap als ein
+zusammenhängender, fail-closed Block geladen, geprüft und gestartet. Den
+Platzhalter durch die freigegebene Prüfsumme aus `release.json` ersetzen:
 
 ```bash
-curl --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
-  --max-time 60 --max-filesize 1048576 -fsS \
-  https://software.intern/dpl-acron/ct/dpl-acron.sh -o /root/dpl-acron-community.sh && \
-echo "COMMUNITY_SCRIPT_SHA256  /root/dpl-acron-community.sh" | sha256sum --check - && \
-/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
-  DPL_BASE_URL="https://software.intern/dpl-acron" \
-  WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-  /bin/bash -p --noprofile --norc /root/dpl-acron-community.sh
+(
+  set -Eeuo pipefail
+  umask 077
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
+  /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
+    --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
+    --max-filesize 1048576 -fsS \
+    https://software.intern/dpl-acron/bootstrap-proxmox.sh \
+    -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
+  printf '%s  %s\n' '245eb06e8536510cde4f7b2b8658d950c2cec5e1bd21002065853853384a3e21' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+    /usr/bin/sha256sum --check --status -
+  /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+    DPL_BASE_URL="https://software.intern/dpl-acron" \
+    WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
+    /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
+)
 ```
 
 Vor der Containererstellung wird das Administratorkennwort verdeckt zweimal
@@ -66,15 +83,24 @@ Proxmox-Host vorhanden sein. Es wird sowohl für den ersten als auch für alle
 folgenden Downloads angegeben:
 
 ```bash
-curl --cacert /usr/local/share/ca-certificates/firma.crt -fsS \
-  https://software.intern/dpl-acron/ct/dpl-acron.sh \
-  -o /root/dpl-acron-community.sh
-echo "COMMUNITY_SCRIPT_SHA256  /root/dpl-acron-community.sh" | sha256sum --check -
-/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
-  DPL_BASE_URL="https://software.intern/dpl-acron" \
-  DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
-  WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-  /bin/bash -p --noprofile --norc /root/dpl-acron-community.sh
+(
+  set -Eeuo pipefail
+  umask 077
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
+  /usr/bin/curl --disable --cacert /usr/local/share/ca-certificates/firma.crt \
+    --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
+    --max-time 60 --speed-limit 1024 --speed-time 15 --max-filesize 1048576 -fsS \
+    https://software.intern/dpl-acron/bootstrap-proxmox.sh \
+    -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
+  printf '%s  %s\n' '245eb06e8536510cde4f7b2b8658d950c2cec5e1bd21002065853853384a3e21' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+    /usr/bin/sha256sum --check --status -
+  /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+    DPL_BASE_URL="https://software.intern/dpl-acron" \
+    DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
+    WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
+    /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
+)
 ```
 
 `curl -k` soll nicht verwendet werden, weil dadurch die Serveridentität nicht
@@ -94,14 +120,22 @@ der Proxmox-Shell wird das Community Script zunächst nach `/tmp` geladen, gepr�
 danach ausgeführt:
 
 ```bash
-curl --proto '=http' --proto-redir '=http' --connect-timeout 10 --max-time 60 \
-  --max-filesize 1048576 -fsS \
-  http://WINDOWS-IP:8088/ct/dpl-acron.sh -o /root/dpl-acron-community.sh && \
-echo "COMMUNITY_SCRIPT_SHA256  /root/dpl-acron-community.sh" | sha256sum --check - && \
-/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
-  DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \
-  WEB_CIDRS="IHR-LAN/CIDR,IHR-VPN/CIDR" \
-  /bin/bash -p --noprofile --norc /root/dpl-acron-community.sh
+(
+  set -Eeuo pipefail
+  umask 077
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
+  /usr/bin/curl --disable --proto '=http' --proto-redir '=http' \
+    --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
+    --max-filesize 1048576 -fsS \
+    http://WINDOWS-IP:8088/ct/dpl-acron.sh -o "$BOOTSTRAP_DIR/dpl-acron.sh"
+  printf '%s  %s\n' 'dc7d5224cdc85432a869b4514971eb4ac02eadfee58a9c66d5b2563ee677d371' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
+    /usr/bin/sha256sum --check --status -
+  /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+    DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \
+    WEB_CIDRS="IHR-LAN/CIDR,IHR-VPN/CIDR" \
+    /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/dpl-acron.sh"
+)
 ```
 
 Auch diese Variante fragt das Administratorkennwort interaktiv und verdeckt ab.
