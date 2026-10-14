@@ -315,6 +315,20 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('architectures = @("amd64")', builder)
         self.assertIn('"release.json"', builder)
 
+    def test_forwardable_installer_is_published_and_verifies_the_entrypoint(self) -> None:
+        builder = (ROOT / "deploy" / "build-internal-repository.ps1").read_text(encoding="utf-8")
+        entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
+
+        self.assertIn('Join-Path $repositoryRoot "install-proxmox.sh"', builder)
+        self.assertIn("proxmox_entry_sha256", builder)
+        self.assertIn("@@COMMUNITY_SHA256@@", entry)
+        self.assertIn(
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository",
+            entry,
+        )
+        self.assertIn("sha256sum --check --status", entry)
+        self.assertIn("pvesh get /cluster/nextid", entry)
+
 
 if __name__ == "__main__":
     unittest.main()

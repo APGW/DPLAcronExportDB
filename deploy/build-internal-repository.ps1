@@ -55,6 +55,11 @@ $communityPath = Join-Path $ctDirectory "dpl-acron.sh"
 $containerInstaller = Join-Path $installDirectory "dpl-acron-install.sh"
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "community-install.sh") -Destination $containerInstaller -Force
 $communityHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $communityPath).Hash.ToLowerInvariant()
+$entryTemplate = Get-Content -LiteralPath (Join-Path $PSScriptRoot "install-proxmox-entry.sh") -Raw
+$entryScript = $entryTemplate.Replace("@@COMMUNITY_SHA256@@", $communityHash)
+$entryPath = Join-Path $repositoryRoot "install-proxmox.sh"
+[IO.File]::WriteAllText($entryPath, $entryScript, $utf8NoBom)
+$entryHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $entryPath).Hash.ToLowerInvariant()
 $containerInstallerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $containerInstaller).Hash.ToLowerInvariant()
 $acceptanceTest = Join-Path $testDirectory "proxmox-acceptance.sh"
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "proxmox-acceptance.sh") -Destination $acceptanceTest -Force
@@ -108,6 +113,8 @@ $manifest = [ordered]@{
     installer_sha256 = $installerHash
     community_script = "ct/dpl-acron.sh"
     community_script_sha256 = $communityHash
+    proxmox_entry = "install-proxmox.sh"
+    proxmox_entry_sha256 = $entryHash
     community_install = "install/dpl-acron-install.sh"
     community_install_sha256 = $containerInstallerHash
     acceptance_test = "test/proxmox-acceptance.sh"
@@ -120,4 +127,6 @@ Write-Host "Internes Repository erstellt: $repositoryRoot"
 Write-Host "Version: $appVersion"
 Write-Host "Community Script: $communityPath"
 Write-Host "Community Script SHA-256: $communityHash"
+Write-Host "Weitergabe-Installer: $entryPath"
+Write-Host "Weitergabe-Installer SHA-256: $entryHash"
 Write-Host "Veröffentlichen Sie den gesamten Ordner unverändert über internes HTTPS."

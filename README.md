@@ -58,6 +58,11 @@ Die reproduzierbare technische und manuelle Testabnahme steht in
 [PROXMOX_TEST.md](PROXMOX_TEST.md).
 Der konkrete Abnahmelauf mit der Tibaum-DPL ist in [TIBAUM_CHECK.md](TIBAUM_CHECK.md) dokumentiert.
 
+Für die direkte Neuinstallation auf einem Proxmox-Host wird zusätzlich
+`dist/internal-repository/install-proxmox.sh` veröffentlicht. Das Skript fragt
+das erlaubte LAN-/VPN-Netz ab, wählt eine freie CT-ID und prüft den eigentlichen
+Installer vor der Ausführung gegen die im Release festgeschriebene SHA-256-Prüfsumme.
+
 ## Datenbank
 
 Der ausgelieferte Dienst verwendet ausschließlich MariaDB. DPL-Importe werden
