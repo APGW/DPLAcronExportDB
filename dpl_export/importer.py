@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 from .database import DatabaseConnection, DatabaseTarget, connect, initialize_schema, transaction
+from .coordination import synchronized
 from .modules import detect_module, get_module, resolve_dpl_layout
 from .xlsx_reader import Sheet, read_workbook, row_marker
 
@@ -287,6 +288,7 @@ def _automatic_formulas(
     return formulas
 
 
+@synchronized
 def import_project(
     database: DatabaseTarget,
     dpl_path: Path,

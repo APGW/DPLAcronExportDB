@@ -13,11 +13,10 @@ nicht ins Netzwerk freigegeben.
 - Proxmox-Firewall an der CT-Netzwerkkarte aktiviert
 - kein Docker, `nesting` oder privilegierter Container erforderlich
 
-Das primäre Verfahren verwendet die aktuelle Proxmox VE Community-Scripts-Engine.
-`ct/dpl-acron.sh` erstellt den unprivilegierten Debian-13-LXC, während
-`install/dpl-acron-install.sh` MariaDB, Anwendung, Dienste und Sicherungen im
-Container vollständig einrichtet. Das ältere eigenständige Hostskript bleibt
-lediglich als Rückfallweg im Release enthalten.
+Das primäre Verfahren verwendet einen internen, Community-Scripts-kompatiblen
+Einstiegspunkt. `ct/dpl-acron.sh` prüft zuerst das vollständige Release und
+startet erst danach den darin enthaltenen LXC-Installer. Dadurch wird kein
+veränderlicher Fremdcode als Proxmox-root ausgeführt.
 
 ## Empfohlen: Ein-Befehl-Installation aus dem internen Repository
 
@@ -50,10 +49,14 @@ WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
 bash /tmp/dpl-acron-community.sh
 ```
 
+Vor der Containererstellung wird das Administratorkennwort verdeckt zweimal
+abgefragt. Der Benutzername ist `admin`. Das Kennwort wird weder in den Befehl
+noch in das Repository geschrieben.
+
 Die Adresse, Prüfsumme und Netze sind Beispiele und müssen ersetzt werden. Das
-CT-Skript verwendet die offizielle Community-Scripts-Engine, lädt jedoch das
-projektspezifische Installskript und das festgelegte Release ausschließlich aus
-dem internen Repository. Die Release-Prüfsumme ist im CT-Skript verankert.
+CT-Skript lädt das festgelegte Release ausschließlich aus dem internen
+Repository. Die Release-Prüfsumme ist im CT-Skript verankert. Erst nach ihrer
+erfolgreichen Prüfung wird der enthaltene Installer ausgeführt.
 
 Bei einer internen Zertifizierungsstelle muss deren CA-Zertifikat auf dem
 Proxmox-Host vorhanden sein. Es wird sowohl für den ersten als auch für alle
@@ -65,6 +68,7 @@ curl --cacert /usr/local/share/ca-certificates/firma.crt -fsS \
   -o /tmp/dpl-acron-community.sh
 echo "COMMUNITY_SCRIPT_SHA256  /tmp/dpl-acron-community.sh" | sha256sum --check -
 DPL_BASE_URL="https://software.intern/dpl-acron" \
+DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
 WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
 bash /tmp/dpl-acron-community.sh
 ```
@@ -94,6 +98,8 @@ WEB_CIDRS="IHR-LAN/CIDR,IHR-VPN/CIDR" \
 bash /tmp/dpl-acron-community.sh
 ```
 
+Auch diese Variante fragt das Administratorkennwort interaktiv und verdeckt ab.
+
 ## Alternative: automatische Vollinstallation mit lokalem Release
 
 Zuerst diese drei Dateien auf den Proxmox-Host kopieren:
@@ -121,6 +127,9 @@ SSH_CIDRS="192.168.133.0/24" \
 SSH_PUBLIC_KEYS="/root/.ssh/authorized_keys" \
 bash /root/proxmox-install-lxc.sh
 ```
+
+Das Skript fragt das Administratorkennwort verdeckt ab und überträgt es nur für
+die einmalige Hash-Erzeugung an den Container.
 
 Da Archiv, Prüfsumme und Skript gemeinsam unter `/root` liegen, wird das Bundle
 automatisch erkannt. `BUNDLE_PATH` ist nur nötig, wenn es an einem anderen Ort
@@ -182,13 +191,9 @@ In diesem Projekt entsprechen dem:
 | Anwendungsinstallation | `deploy/install-debian13.sh` im geprüften Release | Debian-13-LXC |
 | Metadaten | `json/dpl-acron.json` | internes Repository |
 
-Das CT-Skript lädt `core/build.func` aus dem offiziellen Community-Scripts-Core.
-Die Engine unterstützt einen davon getrennten Skriptstamm über
-`COMMUNITY_SCRIPTS_URL`; dieser zeigt hier auf das interne DPL-Repository. Damit
-bleiben Anwendung und Installskript intern, während Containerdialog,
-Ressourcenauswahl und LXC-Erstellung dem Community-Scripts-Ablauf folgen. Eine
-Update-Funktion, Metadaten und die Standardphasen des Installskripts sind
-vorhanden.
+Der veröffentlichte Einstiegspunkt bewahrt die Ein-Befehl-Bedienung, ruft aber
+keine veränderliche Community-Scripts-Engine auf. Containererstellung, Firewall
+und Installation stammen aus demselben per SHA-256 geprüften Release.
 
 ## Was ist ein Post-Install-Skript?
 
@@ -227,12 +232,12 @@ Standardrichtlinie `DROP` an. Es erlaubt:
 
 - ICMP für Diagnose
 - bei DHCP die notwendige DHCP-Antwort
-- `8765/tcp` ausschließlich aus `WEB_CIDRS`
+- `443/tcp` ausschließlich aus `WEB_CIDRS`
 - optional `22/tcp` ausschließlich aus `SSH_CIDRS`
 
 Die Firewall muss zusätzlich auf Datacenter-/Node-Ebene gemäß der vorhandenen
 Proxmox-Konfiguration aktiviert sein. Es darf weder am Internet-Router noch an
-einer vorgeschalteten Firewall eine öffentliche Weiterleitung für `8765`, `443`
+einer vorgeschalteten Firewall eine öffentliche Weiterleitung für `443`
 oder `3306` auf diesen Container geben. VPN-Clients greifen per Routing auf die
 private CT-IP zu.
 

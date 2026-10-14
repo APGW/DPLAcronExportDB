@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import io
 import re
+import os
+import shutil
 import tempfile
 import zipfile
 from datetime import datetime, timezone
@@ -16,8 +18,35 @@ from .service import list_datapoints, project_summary
 MAX_UPLOAD_BYTES = 25 * 1024 * 1024
 MAX_UNCOMPRESSED_BYTES = 250 * 1024 * 1024
 MAX_ARCHIVE_ENTRIES = 10_000
-MAX_ARCHIVE_ENTRY_BYTES = 64 * 1024 * 1024
+MAX_ARCHIVE_ENTRY_BYTES = 16 * 1024 * 1024
 MAX_COMPRESSION_RATIO = 200
+DEFAULT_MIN_FREE_BYTES = 1024 * 1024 * 1024
+DEFAULT_MAX_DATA_BYTES = 5 * 1024 * 1024 * 1024
+
+
+def _tree_size(root: Path) -> int:
+    total = 0
+    if not root.exists():
+        return total
+    for path in root.rglob("*"):
+        try:
+            if path.is_file() and not path.is_symlink():
+                total += path.stat().st_size
+        except OSError:
+            continue
+    return total
+
+
+def ensure_upload_capacity(data_directory: Path, incoming_bytes: int) -> None:
+    minimum_free = int(os.environ.get("DPL_MIN_FREE_BYTES", DEFAULT_MIN_FREE_BYTES))
+    maximum_data = int(os.environ.get("DPL_MAX_DATA_BYTES", DEFAULT_MAX_DATA_BYTES))
+    if incoming_bytes < 0 or minimum_free < 0 or maximum_data <= 0:
+        raise ValueError("Ungültige Speichergrenzen in der Dienstkonfiguration.")
+    data_directory.mkdir(parents=True, exist_ok=True)
+    if shutil.disk_usage(data_directory).free - incoming_bytes < minimum_free:
+        raise ValueError("Zu wenig freier Speicher für einen sicheren Import.")
+    if _tree_size(data_directory) + incoming_bytes > maximum_data:
+        raise ValueError("Das konfigurierte Datenlimit ist erreicht. Alte Projektstände archivieren.")
 
 
 def _safe_filename(filename: str) -> str:
@@ -79,6 +108,7 @@ def import_uploaded_dpl(
     if data_directory is None:
         data_directory = database_config.path.parent if database_config.path is not None else Path("data")
     import_directory = data_directory / "imports"
+    ensure_upload_capacity(data_directory, len(content))
     import_directory.mkdir(parents=True, exist_ok=True)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")
@@ -126,6 +156,7 @@ def preview_uploaded_dpl(
     if data_directory is None:
         data_directory = database_config.path.parent if database_config.path is not None else Path("data")
     preview_root = data_directory / "previews"
+    ensure_upload_capacity(data_directory, len(content))
     preview_root.mkdir(parents=True, exist_ok=True)
     with tempfile.TemporaryDirectory(prefix="dpl-", dir=preview_root) as temporary:
         temporary_path = Path(temporary)

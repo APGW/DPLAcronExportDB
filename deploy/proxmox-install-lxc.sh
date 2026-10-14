@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -Eeuo pipefail
 
+admin_password="${DPL_ADMIN_PASSWORD:-}"
+unset DPL_ADMIN_PASSWORD
+
 # Vollständige Installation eines neuen Debian-13-LXC auf einem Proxmox-VE-Host.
 # Pflichtangaben:
 #   CTID=3072 WEB_CIDRS="192.168.133.0/24,10.20.0.0/16" \
@@ -33,13 +36,20 @@ cores="${CORES:-2}"
 memory="${MEMORY_MB:-2048}"
 swap="${SWAP_MB:-512}"
 rootfs_size="${ROOTFS_GB:-8}"
+admin_username="${DPL_ADMIN_USERNAME:-admin}"
+update_base_url="${DPL_UPDATE_BASE_URL:-}"
+update_allow_http="${DPL_UPDATE_ALLOW_HTTP:-0}"
 work_dir="$(mktemp -d)"
 firewall_temp=""
+container_password_file=""
 
 cleanup() {
   rm -rf -- "$work_dir"
   if [[ -n "$firewall_temp" ]]; then
     rm -f -- "$firewall_temp"
+  fi
+  if [[ -n "$container_password_file" ]] && pct status "$ctid" >/dev/null 2>&1; then
+    pct exec "$ctid" -- rm -f -- "$container_password_file" >/dev/null 2>&1 || true
   fi
 }
 trap cleanup EXIT
@@ -64,6 +74,14 @@ fi
 
 [[ "$ctid" =~ ^[1-9][0-9]{2,8}$ ]] || fail "CTID muss gesetzt und eine gültige Proxmox-ID sein."
 [[ -n "$web_cidrs" ]] || fail "WEB_CIDRS muss die erlaubten LAN-/VPN-Netze enthalten."
+if [[ -z "$admin_password" ]]; then
+  read -r -s -p "Initiales oder neues DPL2ACRON-Administratorkennwort: " admin_password </dev/tty
+  echo
+  read -r -s -p "Kennwort wiederholen: " password_confirmation </dev/tty
+  echo
+  [[ "$admin_password" == "$password_confirmation" ]] || fail "Die Kennwörter stimmen nicht überein."
+  unset password_confirmation
+fi
 if [[ -n "$bundle_path" && -n "$bundle_url" ]]; then
   fail "BUNDLE_PATH und BUNDLE_URL dürfen nicht gleichzeitig gesetzt sein."
 fi
@@ -86,11 +104,14 @@ fi
 
 validate_cidrs() {
   local value="$1"
-  local cidr
-  IFS=',' read -r -a cidr_list <<< "$value"
-  for cidr in "${cidr_list[@]}"; do
-    [[ "$cidr" =~ ^[0-9a-fA-F:.]+/[0-9]{1,3}$ ]] || fail "Ungültiges Netz: $cidr"
-  done
+  python3 - "$value" <<'PY' || fail "Ungültiges oder zu breites Netz: $value"
+import ipaddress
+import sys
+for raw in sys.argv[1].split(","):
+    network = ipaddress.ip_network(raw.strip(), strict=False)
+    if network.prefixlen == 0:
+        raise SystemExit(1)
+PY
 }
 validate_cidrs "$web_cidrs"
 if [[ -n "$ssh_cidrs" ]]; then
@@ -174,7 +195,7 @@ firewall_temp="$(mktemp)"
   fi
   IFS=',' read -r -a web_list <<< "$web_cidrs"
   for cidr in "${web_list[@]}"; do
-    echo "IN ACCEPT -source $cidr -p tcp -dport 8765 -log nolog"
+    echo "IN ACCEPT -source $cidr -p tcp -dport 443 -log nolog"
   done
   if [[ -n "$ssh_cidrs" ]]; then
     IFS=',' read -r -a ssh_list <<< "$ssh_cidrs"
@@ -209,7 +230,21 @@ pct exec "$ctid" -- mkdir -p /root/dpl-acron-release
 pct exec "$ctid" -- chmod 0700 /root/dpl-acron-release
 pct exec "$ctid" -- tar -xzf /tmp/dpl-acron-debian13.tar.gz -C /root/dpl-acron-release
 echo "Starte die Debian-13-Anwendungsinstallation ..."
-pct exec "$ctid" -- bash /root/dpl-acron-release/deploy/install-debian13.sh
+admin_password_file="$work_dir/admin-password"
+container_password_file="/root/.dpl-admin-password-$$"
+umask 077
+printf '%s' "$admin_password" > "$admin_password_file"
+pct push "$ctid" "$admin_password_file" "$container_password_file"
+pct exec "$ctid" -- chmod 0600 "$container_password_file"
+pct exec "$ctid" -- env \
+  "DPL_ADMIN_USERNAME=$admin_username" \
+  "DPL_SECURE_COOKIE=1" \
+  "DPL_TRUST_PROXY=1" \
+  "DPL_UPDATE_BASE_URL=$update_base_url" \
+  "DPL_UPDATE_ALLOW_HTTP=$update_allow_http" \
+  "DPL_ADMIN_PASSWORD_FILE=$container_password_file" \
+  bash -c 'export DPL_ADMIN_PASSWORD="$(cat "$DPL_ADMIN_PASSWORD_FILE")"; rm -f -- "$DPL_ADMIN_PASSWORD_FILE"; unset DPL_ADMIN_PASSWORD_FILE; exec bash /root/dpl-acron-release/deploy/install-debian13.sh'
+unset admin_password
 
 health="$(pct exec "$ctid" -- python3 -c \
   'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8765/api/health", timeout=5).read().decode())')"
@@ -217,7 +252,8 @@ ct_ip="$(pct exec "$ctid" -- hostname -I | awk '{print $1}')"
 
 echo
 echo "Installation erfolgreich: $health"
-echo "Weboberfläche: http://${ct_ip:-CT-IP}:8765/"
+echo "Weboberfläche: https://${ct_ip:-CT-IP}/"
+echo "Interne CA kopieren: pct pull $ctid /etc/dpl-acron/tls/ca.crt ./dpl2acron-ca.crt"
 echo "Container-Konsole: pct enter $ctid"
 echo "Dienststatus: pct exec $ctid -- systemctl status dpl-acron --no-pager"
 echo "Firewall: /etc/pve/firewall/$ctid.fw"

@@ -117,7 +117,7 @@ class PipelineTest(unittest.TestCase):
         self.assertEqual("12.5", updated["acron_pval_to"])
         audit = recent_audit(self.database)
         self.assertTrue({"comment", "pvalTo"}.issubset({entry["field_name"] for entry in audit}))
-        self.assertNotIn("changed_by_user_id", audit[0])
+        self.assertEqual("system", audit[0]["changed_by"])
 
     def test_stale_edit_is_rejected_instead_of_overwriting(self) -> None:
         first_copy = list_datapoints(self.database)[0]

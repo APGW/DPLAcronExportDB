@@ -10,6 +10,7 @@ Group=dpl-acron
 WorkingDirectory=/opt/dpl-acron
 EnvironmentFile=-/etc/default/dpl-acron
 EnvironmentFile=/etc/dpl-acron/database.env
+EnvironmentFile=/etc/dpl-acron/auth.env
 Environment=PYTHONUNBUFFERED=1
 Environment=PYTHONDONTWRITEBYTECODE=1
 ExecStart=/usr/bin/python3 /opt/dpl-acron/app.py --data-dir /var/lib/dpl-acron/data serve --host ${DPL_HOST} --port ${DPL_PORT}
@@ -40,6 +41,8 @@ SystemCallArchitectures=native
 RestrictAddressFamilies=AF_UNIX AF_INET AF_INET6
 LockPersonality=true
 MemoryDenyWriteExecute=true
+MemoryHigh=1400M
+MemoryMax=1600M
 CapabilityBoundingSet=
 AmbientCapabilities=
 ReadWritePaths=/var/lib/dpl-acron

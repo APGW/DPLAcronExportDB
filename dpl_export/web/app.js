@@ -38,6 +38,8 @@ const state = {
   undoStack: [],
   redoStack: [],
   historyBusy: false,
+  csrfToken: "",
+  username: "",
 };
 
 const $ = (selector) => document.querySelector(selector);
@@ -105,15 +107,71 @@ const escapeHtml = (input) => String(input ?? "")
 
 async function fetchJson(url, options = {}) {
   const headers = new Headers(options.headers || {});
+  const method = String(options.method || "GET").toUpperCase();
+  if (state.csrfToken && !["GET", "HEAD"].includes(method)) {
+    headers.set("X-CSRF-Token", state.csrfToken);
+  }
   const response = await fetch(url, { ...options, headers });
   const payload = await response.json().catch(() => ({}));
   if (!response.ok) {
+    if (response.status === 401) {
+      window.location.replace("/login");
+    }
     const error = new Error(payload.error || `HTTP ${response.status}`);
     error.status = response.status;
     error.payload = payload;
     throw error;
   }
   return payload;
+}
+
+async function restoreSession() {
+  const session = await fetchJson("/api/auth/session");
+  if (!session.authenticated || !session.csrfToken) {
+    window.location.replace("/login");
+    return false;
+  }
+  state.csrfToken = session.csrfToken;
+  state.username = session.username || "admin";
+  text("#auth-user", state.username);
+  return true;
+}
+
+async function logout() {
+  try {
+    await fetchJson("/api/auth/logout", { method: "POST", body: "{}" });
+  } finally {
+    state.csrfToken = "";
+    window.location.replace("/login");
+  }
+}
+
+async function downloadExport(link) {
+  const response = await fetch(link.href, {
+    method: "POST",
+    cache: "no-store",
+    headers: { "X-CSRF-Token": state.csrfToken },
+  });
+  if (response.status === 401) {
+    window.location.replace("/login");
+    return;
+  }
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({}));
+    throw new Error(payload.error || `HTTP ${response.status}`);
+  }
+  const objectUrl = URL.createObjectURL(await response.blob());
+  const download = document.createElement("a");
+  download.href = objectUrl;
+  download.download = link.dataset.exportKind === "acron"
+    ? $("#acron-filename").textContent
+    : $("#provider-filename").textContent;
+  document.body.appendChild(download);
+  download.click();
+  download.remove();
+  URL.revokeObjectURL(objectUrl);
+  const history = await fetchJson(projectUrl("/api/exports/history?limit=12"));
+  renderExportHistory(history.items || []);
 }
 
 function projectUrl(path) {
@@ -284,11 +342,12 @@ function renderAudit(items) {
   }
   list.innerHTML = items.map((entry) => {
     const target = entry.source_long_name || entry.identification || "Projekt";
+    const actor = entry.changed_by || "system";
     const label = auditFieldLabels[entry.field_name] || entry.field_name;
     const detail = entry.field_name === "import"
       ? `Neue Quelle: ${auditValue(entry.new_value)}`
       : `${auditValue(entry.old_value)} → ${auditValue(entry.new_value)}`;
-    return `<li><strong>${escapeHtml(label)}</strong><span>${escapeHtml(target)} · ${detail} · ${escapeHtml(formatAuditTime(entry.changed_at))}</span></li>`;
+    return `<li><strong>${escapeHtml(label)}</strong><span>${escapeHtml(target)} · ${escapeHtml(detail)} · ${escapeHtml(actor)} · ${escapeHtml(formatAuditTime(entry.changed_at))}</span></li>`;
   }).join("");
 }
 
@@ -1238,7 +1297,15 @@ async function uploadPCS7Files() {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+  try {
+    if (!await restoreSession()) return;
+  } catch {
+    window.location.replace("/login");
+    return;
+  }
   prepareAggregationSelects();
+
+  $("#auth-logout").addEventListener("click", logout);
 
   $("#editor-form").addEventListener("submit", saveEditor);
   $("#editor-form").addEventListener("input", updateDirtyState);
@@ -1345,18 +1412,16 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   document.querySelectorAll(".export-link").forEach((link) => {
     link.addEventListener("click", (event) => {
+      event.preventDefault();
       if (link.getAttribute("aria-disabled") === "true") {
-        event.preventDefault();
         showToast("Export gesperrt: Datensatzfehler korrigieren.", true);
         focusAttention();
         return;
       }
       showToast("Exportdatei wird erstellt.");
-      window.setTimeout(() => {
-        fetchJson(projectUrl("/api/exports/history?limit=12"))
-          .then((payload) => renderExportHistory(payload.items || []))
-          .catch(() => {});
-      }, 1200);
+      downloadExport(link)
+        .then(() => showToast("Exportdatei wurde erstellt."))
+        .catch((error) => showToast(error.message, true));
     });
   });
 

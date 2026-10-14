@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Anmelden · DPL2ACRON</title>
+    <link rel="stylesheet" href="/styles.css">
+  </head>
+  <body class="login-page">
+    <main class="login-shell">
+      <section class="login-card" aria-labelledby="login-title">
+        <div class="login-brand">
+          <img src="/assets/agw-logo.png" alt="A. Große-Wentrup GmbH">
+          <div>
+            <strong>DPL2ACRON <span class="codex-watermark">Made with Codex</span></strong>
+            <small>DPL prüfen und Exportdateien erzeugen</small>
+          </div>
+        </div>
+        <div class="login-copy">
+          <p class="eyebrow">Geschützter Bereich</p>
+          <h1 id="login-title">Anmelden</h1>
+          <p>Geben Sie die Zugangsdaten für DPL2ACRON ein.</p>
+        </div>
+        <form id="login-form" class="login-form">
+          <label>Benutzername
+            <input id="login-username" name="username" autocomplete="username" required autofocus maxlength="64">
+          </label>
+          <label>Kennwort
+            <input id="login-password" name="password" type="password" autocomplete="current-password" required maxlength="256">
+          </label>
+          <p id="login-error" class="login-error" role="alert" hidden></p>
+          <button id="login-submit" class="button button-primary" type="submit">Anmelden</button>
+        </form>
+        <p class="login-network-note">Zugriff ausschließlich über das freigegebene Intranet oder VPN.</p>
+      </section>
+    </main>
+    <script src="/login.js" defer></script>
+  </body>
+</html>

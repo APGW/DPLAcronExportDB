@@ -205,6 +205,8 @@ def _sqlite_migrations(connection: DatabaseConnection) -> None:
             WHERE datapoint_id IS NOT NULL
             """
         )
+    if "changed_by" not in _sqlite_columns(connection, "audit_log"):
+        connection.execute("ALTER TABLE audit_log ADD COLUMN changed_by TEXT NOT NULL DEFAULT 'system'")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_projects_logical_version ON projects(logical_key, version_number)")
     connection.execute("CREATE INDEX IF NOT EXISTS idx_audit_project ON audit_log(project_id, changed_at)")
     connection.execute("DROP VIEW IF EXISTS v_datapoint_editor")
@@ -277,6 +279,9 @@ def _mariadb_migrations(connection: DatabaseConnection) -> None:
         connection.execute("ALTER TABLE audit_log DROP COLUMN changed_by_user_id")
     connection.execute(
         "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS project_id BIGINT UNSIGNED NULL"
+    )
+    connection.execute(
+        "ALTER TABLE audit_log ADD COLUMN IF NOT EXISTS changed_by VARCHAR(64) NOT NULL DEFAULT 'system'"
     )
     connection.execute(
         """

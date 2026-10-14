@@ -39,6 +39,7 @@ $bundleItems = @(
     "README.md",
     "DEPLOY_DEBIAN13.md",
     "PROXMOX_CT.md",
+    "PROXMOX_TEST.md",
     "TIBAUM_CHECK.md",
     "dpl_export",
     "deploy",

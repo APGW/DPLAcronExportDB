@@ -5,7 +5,7 @@ einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemei
 Korrektur bereit und erzeugt getrennte ACRON- und
 WINCC60-Provider-Exporte.
 
-## Version 3.6.0
+## Version 3.7.1
 
 - prüft eine DPL vor der Übernahme und zeigt neue, geänderte sowie entfallene Datensätze an
 - bewahrt vorherige Projektversionen schreibgeschützt und auswählbar auf
@@ -14,6 +14,7 @@ WINCC60-Provider-Exporte.
 - zeigt Datenbank-, Sicherungs-, Speicher- und Modulstatus direkt im Webinterface
 - begrenzt und prüft XLSX-Archive vor der Verarbeitung gegen fehlerhafte oder übergroße Inhalte
 - ergänzt restriktive HTTP-Sicherheitsheader für den Intranetbetrieb
+- schützt Oberfläche und API durch ein lokales Administratorkonto, Sitzungen und CSRF-Prüfung
 
 Die Tabellenansicht unterstützt Einzel- und Mehrfachauswahl. PCS7-Abweichungen
 können direkt in der Zeile oder gesammelt als geprüft markiert werden. Ein
@@ -25,11 +26,14 @@ Datensatzversion vor dem Überschreiben paralleler Änderungen.
 
 Die Anwendung läuft ausschließlich im Unternehmensnetz auf Debian 13, bevorzugt
 in einem unprivilegierten Proxmox-CT. Mitarbeiter greifen über LAN oder
-Unternehmens-VPN auf die private CT-Adresse zu. Es gibt bewusst kein Login.
+Unternehmens-VPN auf die private CT-Adresse zu. Der Webdienst verlangt eine
+Anmeldung mit dem lokalen Administratorkonto. Das Kennwort wird ausschließlich
+als gesalzener PBKDF2-Prüfwert gespeichert und bei der Installation verdeckt
+abgefragt.
 
-Die Abgrenzung erfolgt deshalb zwingend im Netzwerk:
+Der Login ergänzt die weiterhin zwingende Abgrenzung im Netzwerk:
 
-- Webport `8765/tcp` nur aus festgelegten LAN- und VPN-Netzen zulassen
+- HTTPS-Port `443/tcp` nur aus festgelegten LAN- und VPN-Netzen zulassen; Port `8765` bleibt Loopback-intern
 - keine öffentliche DNS-Freigabe und keine Portweiterleitung aus dem Internet
 - MariaDB nicht im Netzwerk freigeben; die Anwendung nutzt den lokalen Unix-Socket
 - SSH nur aus dem Administrationsnetz erlauben
@@ -37,11 +41,11 @@ Die Abgrenzung erfolgt deshalb zwingend im Netzwerk:
 Enthalten sind weiterhin:
 
 - zentrale MariaDB auf demselben Debian-System
-- Zeitstempel-Protokoll mit altem und neuem Wert, ohne Personenbezug
+- Änderungsprotokoll mit Benutzer, Zeitstempel sowie altem und neuem Wert
 - optimistische Sperren gegen unbemerktes Überschreiben paralleler Änderungen
 - transaktionale DPL-Übernahme
-- tägliche MariaDB-Sicherung mit 14 Tagen Aufbewahrung
-- optionaler interner HTTPS-Reverse-Proxy
+- tägliche Datenbank- und Zustandssicherung mit 14 Tagen Aufbewahrung
+- verpflichtender interner HTTPS-Reverse-Proxy mit eigener CA
 
 Die automatische Vollinstallation eines neuen Debian-13-LXC steht in
 [PROXMOX_CT.md](PROXMOX_CT.md). Das Community Script lädt die Debian-Vorlage,
@@ -50,6 +54,8 @@ standardisierte Installskript aus. Für die Proxmox-Browserkonsole kann mit
 `deploy/build-internal-repository.ps1` ein intern per HTTPS bereitstellbares
 Ein-Befehl-Installationspaket gebaut werden. Der manuelle Weg für vorhandene
 Systeme steht in [DEPLOY_DEBIAN13.md](DEPLOY_DEBIAN13.md).
+Die reproduzierbare technische und manuelle Testabnahme steht in
+[PROXMOX_TEST.md](PROXMOX_TEST.md).
 Der konkrete Abnahmelauf mit der Tibaum-DPL ist in [TIBAUM_CHECK.md](TIBAUM_CHECK.md) dokumentiert.
 
 ## Datenbank

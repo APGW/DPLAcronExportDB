@@ -3,6 +3,9 @@ from __future__ import annotations
 import json
 import logging
 import mimetypes
+import secrets
+import ipaddress
+from http.cookies import SimpleCookie
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
@@ -10,7 +13,16 @@ from urllib.parse import parse_qs, unquote, urlparse
 
 from .database import DatabaseTarget, database_health
 from . import __version__
-from .exporter import acron_export, export_history, provider_export, record_export_run
+from .auth import (
+    AuthenticationError,
+    AuthenticationRateLimitError,
+    SESSION_COOKIE_NAME,
+    Session,
+    SessionStore,
+    auth_from_environment,
+)
+from .coordination import STATE_LOCK
+from .exporter import ExportBlockedError, export_history, generate_recorded_export
 from .service import (
     RevisionConflictError,
     bulk_review_datapoints,
@@ -55,6 +67,7 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
     acron_template = BUNDLED_PATHS.acron_template
     provider_template = BUNDLED_PATHS.provider_template
     request_timeout = DEFAULT_REQUEST_TIMEOUT_SECONDS
+    sessions: SessionStore
     server_version = f"DPLAcron/{__version__}"
     sys_version = ""
 
@@ -89,6 +102,66 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
         content = json.dumps(payload, ensure_ascii=False, separators=(",", ":"), default=str).encode("utf-8")
         self._headers("application/json; charset=utf-8", len(content), status, **headers)
         self.wfile.write(content)
+
+    def _redirect(self, location: str) -> None:
+        self._headers("text/plain; charset=utf-8", 0, HTTPStatus.SEE_OTHER, Location=location)
+
+    def _session_token(self) -> str | None:
+        raw_cookie = self.headers.get("Cookie", "")
+        if not raw_cookie or len(raw_cookie) > 4096:
+            return None
+        try:
+            cookie = SimpleCookie(raw_cookie)
+        except ValueError:
+            return None
+        morsel = cookie.get(SESSION_COOKIE_NAME)
+        return morsel.value if morsel is not None else None
+
+    def _session(self) -> Session | None:
+        return self.sessions.get(self._session_token())
+
+    def _require_session(self, *, redirect: bool = False) -> Session | None:
+        session = self._session()
+        if session is not None:
+            return session
+        if redirect:
+            self._redirect("/login")
+        else:
+            self._error(HTTPStatus.UNAUTHORIZED, "Anmeldung erforderlich.")
+        return None
+
+    def _require_csrf(self, session: Session) -> bool:
+        supplied = self.headers.get("X-CSRF-Token", "")
+        if not supplied or len(supplied) > 128 or not secrets.compare_digest(supplied, session.csrf_token):
+            self._error(HTTPStatus.FORBIDDEN, "Ungültiger Sicherheitstoken. Seite neu laden.")
+            return False
+        return True
+
+    def _session_cookie(self, token: str, *, clear: bool = False) -> str:
+        parts = [f"{SESSION_COOKIE_NAME}={token}", "Path=/", "HttpOnly", "SameSite=Strict"]
+        parts.append("Max-Age=0" if clear else "Max-Age=43200")
+        if self.sessions.config.secure_cookie:
+            parts.append("Secure")
+        return "; ".join(parts)
+
+    def _origin_is_allowed(self) -> bool:
+        origin = self.headers.get("Origin")
+        if not origin:
+            return True
+        parsed = urlparse(origin)
+        return parsed.scheme in {"http", "https"} and parsed.netloc == self.headers.get("Host", "")
+
+    def _client_key(self) -> str:
+        peer = self.client_address[0]
+        if not self.sessions.config.trusted_proxy:
+            return peer
+        try:
+            if not ipaddress.ip_address(peer).is_loopback:
+                return peer
+            forwarded = self.headers.get("X-Real-IP", "").strip()
+            return ipaddress.ip_address(forwarded).compressed
+        except ValueError:
+            return peer
 
     def _error(self, status: int, message: str, **payload) -> None:
         self._send_json({"error": message, **payload}, status)
@@ -139,14 +212,19 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
         if remaining <= 0 or remaining > MAX_UPLOAD_BYTES:
             return
         while remaining:
-            chunk = self.rfile.read(min(remaining, 64 * 1024))
+            try:
+                chunk = self.rfile.read(min(remaining, 64 * 1024))
+            except OSError:
+                break
             if not chunk:
                 break
             remaining -= len(chunk)
 
     def _static(self, path: str) -> None:
         filename = "index.html" if path in {"", "/"} else path.lstrip("/")
-        if filename not in {"index.html", "app.js", "styles.css", "assets/agw-logo.png"}:
+        if filename not in {
+            "index.html", "app.js", "login.html", "login.js", "styles.css", "assets/agw-logo.png",
+        }:
             self._error(HTTPStatus.NOT_FOUND, "Datei nicht gefunden.")
             return
         file_path = WEB_ROOT / filename
@@ -168,11 +246,29 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
         try:
             if parsed.path == "/api/health":
                 health = database_health(self.database)
-                health["version"] = __version__
-                self._send_json(health)
+                self._send_json({"status": health["status"], "version": __version__})
+                return
+            if parsed.path == "/api/auth/session":
+                session = self._session()
+                if session is None:
+                    self._send_json({"authenticated": False})
+                else:
+                    self._send_json({
+                        "authenticated": True,
+                        "username": session.username,
+                        "csrfToken": session.csrf_token,
+                    })
+                return
+            if parsed.path in {"/login", "/login.html", "/login.js", "/styles.css", "/assets/agw-logo.png"}:
+                self._static("/login.html" if parsed.path == "/login" else parsed.path)
                 return
             if not parsed.path.startswith("/api/"):
+                if self._require_session(redirect=True) is None:
+                    return
                 self._static(parsed.path)
+                return
+
+            if self._require_session() is None:
                 return
 
             if parsed.path == "/api/project":
@@ -216,19 +312,6 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/operations":
                 self._send_json(operations_status(self.database, self.data_directory))
                 return
-            if parsed.path in {"/api/exports/acron", "/api/exports/provider"}:
-                kind = "acron" if parsed.path.endswith("acron") else "provider"
-                export = acron_export if kind == "acron" else provider_export
-                filename, content = export(self.database, project_code)
-                run = record_export_run(self.database, project_code, kind, filename, content)
-                self._headers(
-                    "text/tab-separated-values; charset=utf-16le",
-                    len(content),
-                    Content_Disposition=f'attachment; filename="{filename}"',
-                    X_Export_SHA256=run["sha256"],
-                )
-                self.wfile.write(content)
-                return
             self._error(HTTPStatus.NOT_FOUND, "Route nicht gefunden.")
         except KeyError:
             self._error(HTTPStatus.NOT_FOUND, "Datensatz nicht gefunden.")
@@ -239,13 +322,18 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
 
     def do_PATCH(self) -> None:
         parsed = urlparse(self.path)
+        session = self._require_session()
+        if session is None or not self._require_csrf(session):
+            return
         if not parsed.path.startswith("/api/datapoints/"):
             self._error(HTTPStatus.NOT_FOUND, "Route nicht gefunden.")
             return
         try:
             datapoint_id = int(parsed.path.rsplit("/", 1)[1])
             payload = self._read_json()
-            self._send_json(update_datapoint(self.database, datapoint_id, payload))
+            with STATE_LOCK:
+                updated = update_datapoint(self.database, datapoint_id, payload, actor=session.username)
+            self._send_json(updated)
         except RevisionConflictError as exc:
             current = get_datapoint(self.database, int(parsed.path.rsplit("/", 1)[1]))
             self._error(HTTPStatus.CONFLICT, str(exc), current=current)
@@ -259,14 +347,65 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         parsed = urlparse(self.path)
         try:
+            if parsed.path == "/api/auth/login":
+                if not self._origin_is_allowed():
+                    self._discard_request_body()
+                    self._error(HTTPStatus.FORBIDDEN, "Anmeldung von dieser Herkunft ist nicht zulässig.")
+                    return
+                payload = self._read_json()
+                token, session = self.sessions.login(
+                    payload.get("username", ""),
+                    payload.get("password", ""),
+                    self._client_key(),
+                )
+                self._send_json(
+                    {
+                        "authenticated": True,
+                        "username": session.username,
+                        "csrfToken": session.csrf_token,
+                    },
+                    Set_Cookie=self._session_cookie(token),
+                )
+                return
+
+            session = self._require_session()
+            if session is None or not self._require_csrf(session):
+                self._discard_request_body()
+                return
+            if parsed.path == "/api/auth/logout":
+                self.sessions.logout(self._session_token())
+                self._send_json(
+                    {"authenticated": False},
+                    Set_Cookie=self._session_cookie("", clear=True),
+                )
+                return
+            if parsed.path in {"/api/exports/acron", "/api/exports/provider"}:
+                query = parse_qs(parsed.query)
+                project_code = query.get("project", [None])[0]
+                kind = "acron" if parsed.path.endswith("acron") else "provider"
+                with STATE_LOCK:
+                    filename, content, run = generate_recorded_export(
+                        self.database, project_code, kind
+                    )
+                self._headers(
+                    "text/tab-separated-values; charset=utf-16le",
+                    len(content),
+                    Content_Disposition=f'attachment; filename="{filename}"',
+                    X_Export_SHA256=run["sha256"],
+                )
+                self.wfile.write(content)
+                return
             if parsed.path == "/api/datapoints/bulk-review":
                 payload = self._read_json()
-                self._send_json({
-                    "items": bulk_review_datapoints(
+                with STATE_LOCK:
+                    items = bulk_review_datapoints(
                         self.database,
                         payload.get("items", []),
                         bool(payload.get("reviewed")),
+                        actor=session.username,
                     )
+                self._send_json({
+                    "items": items
                 })
                 return
             if parsed.path == "/api/import-dpl":
@@ -274,15 +413,16 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
                 module_code = self.headers.get("X-Anlage-Module", "").strip().casefold()
                 if not module_code:
                     raise ValueError("Bitte vor dem Upload einen Anlagentyp auswählen.")
-                result = import_uploaded_dpl(
-                    self.database,
-                    filename,
-                    content,
-                    self.acron_template,
-                    self.provider_template,
-                    data_directory=self.data_directory,
-                    module_code=module_code,
-                )
+                with STATE_LOCK:
+                    result = import_uploaded_dpl(
+                        self.database,
+                        filename,
+                        content,
+                        self.acron_template,
+                        self.provider_template,
+                        data_directory=self.data_directory,
+                        module_code=module_code,
+                    )
                 self._send_json(result, HTTPStatus.CREATED)
                 return
             if parsed.path == "/api/import-dpl/preview":
@@ -303,17 +443,28 @@ class DPLRequestHandler(BaseHTTPRequestHandler):
             if parsed.path == "/api/import-pcs7":
                 filename, content = self._read_upload()
                 project_code = self.headers.get("X-Project", "").strip() or None
-                result = import_pcs7_export(
-                    self.database,
-                    filename,
-                    content,
-                    data_directory=self.data_directory,
-                    project_code=project_code,
-                )
-                result["summary"] = project_summary(self.database, project_code)
+                with STATE_LOCK:
+                    result = import_pcs7_export(
+                        self.database,
+                        filename,
+                        content,
+                        data_directory=self.data_directory,
+                        project_code=project_code,
+                    )
+                    result["summary"] = project_summary(self.database, project_code)
                 self._send_json(result, HTTPStatus.CREATED)
                 return
             self._error(HTTPStatus.NOT_FOUND, "Route nicht gefunden.")
+        except AuthenticationRateLimitError as exc:
+            self._send_json(
+                {"error": str(exc)},
+                HTTPStatus.TOO_MANY_REQUESTS,
+                Retry_After="900",
+            )
+        except AuthenticationError as exc:
+            self._error(HTTPStatus.UNAUTHORIZED, str(exc))
+        except ExportBlockedError as exc:
+            self._error(HTTPStatus.UNPROCESSABLE_ENTITY, str(exc), issues=exc.issue_count)
         except RevisionConflictError as exc:
             self._error(HTTPStatus.CONFLICT, str(exc))
         except KeyError:
@@ -345,6 +496,7 @@ def serve(
             "acron_template": runtime_paths.acron_template,
             "provider_template": runtime_paths.provider_template,
             "request_timeout": request_timeout_seconds(),
+            "sessions": SessionStore(auth_from_environment()),
         },
     )
     server = DPLHTTPServer((host, port), handler)

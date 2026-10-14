@@ -3,6 +3,7 @@ from __future__ import annotations
 import colorsys
 import posixpath
 import re
+import threading
 import xml.etree.ElementTree as ET
 import zipfile
 from dataclasses import dataclass
@@ -38,6 +39,14 @@ THEME_COLOR_NAMES = (
     "hlink",
     "folHlink",
 )
+
+MAX_WORKBOOK_ROWS = 50_000
+MAX_WORKBOOK_CELLS = 250_000
+MAX_SHARED_STRINGS = 100_000
+MAX_CELL_TEXT_LENGTH = 32_767
+MAX_METADATA_XML_BYTES = 4 * 1024 * 1024
+MAX_WORKSHEET_XML_BYTES = 16 * 1024 * 1024
+_PARSER_SLOT = threading.BoundedSemaphore(1)
 
 
 @dataclass(frozen=True)
@@ -128,18 +137,35 @@ def row_marker(sheet: Sheet, row_number: int, start_column: int = 0, end_column:
 def _shared_strings(archive: zipfile.ZipFile) -> list[str]:
     if "xl/sharedStrings.xml" not in archive.namelist():
         return []
-    root = ET.fromstring(archive.read("xl/sharedStrings.xml"))
-    return [
-        "".join(node.text or "" for node in item.findall(".//x:t", NS))
-        for item in root.findall("x:si", NS)
-    ]
+    if archive.getinfo("xl/sharedStrings.xml").file_size > MAX_WORKSHEET_XML_BYTES:
+        raise ValueError("Die XLSX-Datei enthält zu viele gemeinsame Texte.")
+    strings: list[str] = []
+    with archive.open("xl/sharedStrings.xml") as source:
+        for _event, item in ET.iterparse(source, events=("end",)):
+            if item.tag != f"{{{MAIN_NS}}}si":
+                continue
+            value = "".join(node.text or "" for node in item.findall(".//x:t", NS))
+            if len(value) > MAX_CELL_TEXT_LENGTH:
+                raise ValueError("Die XLSX-Datei enthält einen zu langen Zelltext.")
+            strings.append(value)
+            item.clear()
+            if len(strings) > MAX_SHARED_STRINGS:
+                raise ValueError("Die XLSX-Datei enthält zu viele gemeinsame Texte.")
+    return strings
+
+
+def _metadata_xml(archive: zipfile.ZipFile, name: str) -> ET.Element:
+    if archive.getinfo(name).file_size > MAX_METADATA_XML_BYTES:
+        raise ValueError("Die XLSX-Datei enthält ungewöhnlich große Metadaten.")
+    with archive.open(name) as source:
+        return ET.fromstring(source.read(MAX_METADATA_XML_BYTES + 1))
 
 
 def _theme_colors(archive: zipfile.ZipFile) -> dict[int, str]:
     theme_paths = [name for name in archive.namelist() if name.startswith("xl/theme/theme") and name.endswith(".xml")]
     if not theme_paths:
         return {}
-    root = ET.fromstring(archive.read(sorted(theme_paths)[0]))
+    root = _metadata_xml(archive, sorted(theme_paths)[0])
     scheme = next((node for node in root.iter() if node.tag.endswith("}clrScheme")), None)
     if scheme is None:
         return {}
@@ -168,7 +194,7 @@ def _apply_tint(rgb: str, tint: float) -> str:
 
 
 def _style_fills(archive: zipfile.ZipFile) -> list[str | None]:
-    root = ET.fromstring(archive.read("xl/styles.xml"))
+    root = _metadata_xml(archive, "xl/styles.xml")
     theme_colors = _theme_colors(archive)
     fills: list[str | None] = []
     for fill in root.findall("x:fills/x:fill", NS):
@@ -195,8 +221,8 @@ def _style_fills(archive: zipfile.ZipFile) -> list[str | None]:
 
 
 def _sheet_paths(archive: zipfile.ZipFile) -> list[tuple[str, str]]:
-    workbook = ET.fromstring(archive.read("xl/workbook.xml"))
-    relationships = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
+    workbook = _metadata_xml(archive, "xl/workbook.xml")
+    relationships = _metadata_xml(archive, "xl/_rels/workbook.xml.rels")
     targets = {
         relationship.attrib["Id"]: relationship.attrib["Target"]
         for relationship in relationships.findall("r:Relationship", REL_NS)
@@ -221,7 +247,10 @@ def _cell_value(cell: ET.Element, shared_strings: list[str]) -> Any:
         return None
     value = value_node.text or ""
     if cell_type == "s":
-        return shared_strings[int(value)]
+        try:
+            return shared_strings[int(value)]
+        except (ValueError, IndexError) as exc:
+            raise ValueError("Die XLSX-Datei enthält einen ungültigen Textverweis.") from exc
     if cell_type == "b":
         return value == "1"
     if cell_type in {"str", "e"}:
@@ -234,26 +263,57 @@ def _cell_value(cell: ET.Element, shared_strings: list[str]) -> Any:
 
 
 def read_workbook(path: Path | str) -> WorkbookData:
-    with zipfile.ZipFile(path) as archive:
-        shared_strings = _shared_strings(archive)
-        style_fills = _style_fills(archive)
-        sheets: dict[str, Sheet] = {}
-        for name, target in _sheet_paths(archive):
-            root = ET.fromstring(archive.read(target))
-            rows: dict[int, dict[int, Cell]] = {}
-            for row_node in root.findall("x:sheetData/x:row", NS):
-                row_number = int(row_node.attrib["r"])
-                row: dict[int, Cell] = {}
-                for cell_node in row_node.findall("x:c", NS):
-                    column = column_index(cell_node.attrib["r"])
-                    style_id = int(cell_node.attrib.get("s", 0))
-                    formula_node = cell_node.find("x:f", NS)
-                    row[column] = Cell(
-                        value=_cell_value(cell_node, shared_strings),
-                        formula=formula_node.text if formula_node is not None else None,
-                        style_id=style_id,
-                        fill_rgb=style_fills[style_id] if style_id < len(style_fills) else None,
-                    )
-                rows[row_number] = row
-            sheets[name] = Sheet(name=name, rows=rows)
-    return WorkbookData(sheets=sheets)
+    if not _PARSER_SLOT.acquire(blocking=False):
+        raise ValueError("Eine andere XLSX-Datei wird bereits verarbeitet. Bitte erneut versuchen.")
+    try:
+        with zipfile.ZipFile(path) as archive:
+            shared_strings = _shared_strings(archive)
+            style_fills = _style_fills(archive)
+            sheets: dict[str, Sheet] = {}
+            total_rows = 0
+            total_cells = 0
+            for name, target in _sheet_paths(archive):
+                if archive.getinfo(target).file_size > MAX_WORKSHEET_XML_BYTES:
+                    raise ValueError("Ein XLSX-Arbeitsblatt ist ungewöhnlich groß.")
+                rows: dict[int, dict[int, Cell]] = {}
+                with archive.open(target) as source:
+                    row_number: int | None = None
+                    row: dict[int, Cell] | None = None
+                    for event, node in ET.iterparse(source, events=("start", "end")):
+                        if event == "start" and node.tag == f"{{{MAIN_NS}}}row":
+                            total_rows += 1
+                            if total_rows > MAX_WORKBOOK_ROWS:
+                                raise ValueError("Die XLSX-Datei enthält zu viele Zeilen.")
+                            row_number = int(node.attrib.get("r", total_rows))
+                            row = {}
+                            continue
+                        if event == "end" and node.tag == f"{{{MAIN_NS}}}c" and row is not None:
+                            cell_node = node
+                            total_cells += 1
+                            if total_cells > MAX_WORKBOOK_CELLS:
+                                raise ValueError("Die XLSX-Datei enthält zu viele Zellen.")
+                            column = column_index(cell_node.attrib["r"])
+                            style_id = int(cell_node.attrib.get("s", 0))
+                            formula_node = cell_node.find("x:f", NS)
+                            formula = formula_node.text if formula_node is not None else None
+                            value = _cell_value(cell_node, shared_strings)
+                            if len(str(value or "")) > MAX_CELL_TEXT_LENGTH or len(formula or "") > MAX_CELL_TEXT_LENGTH:
+                                raise ValueError("Die XLSX-Datei enthält einen zu langen Zellinhalt.")
+                            row[column] = Cell(
+                                value=value,
+                                formula=formula,
+                                style_id=style_id,
+                                fill_rgb=style_fills[style_id] if style_id < len(style_fills) else None,
+                            )
+                            cell_node.clear()
+                            continue
+                        if event == "end" and node.tag == f"{{{MAIN_NS}}}row" and row is not None:
+                            assert row_number is not None
+                            rows[row_number] = row
+                            row = None
+                            row_number = None
+                            node.clear()
+                sheets[name] = Sheet(name=name, rows=rows)
+        return WorkbookData(sheets=sheets)
+    finally:
+        _PARSER_SLOT.release()

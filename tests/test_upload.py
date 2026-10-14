@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import http.cookiejar
 import shutil
 import threading
 import unittest
@@ -11,6 +12,7 @@ from pathlib import Path
 from urllib.parse import quote
 
 from dpl_export.importer import import_project
+from dpl_export.auth import AuthConfig, SessionStore, hash_password
 from dpl_export.service import list_datapoints, project_summary, update_datapoint
 from dpl_export.upload import import_uploaded_dpl, validate_xlsx_upload
 from dpl_export.web_server import DPLHTTPServer, DPLRequestHandler
@@ -20,6 +22,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DPL = ROOT / "2026-06-12 DPL_PWK Lippestraße; Braukgraben.xlsx"
 ACRON_TEMPLATE = ROOT / "brauckgraben_neu.csv.xlsx"
 PROVIDER_TEMPLATE = ROOT / "shhamm_provider1_WINCC60.csv"
+TEST_PASSWORD = "unit-test-password!"
+TEST_PASSWORD_HASH = hash_password(TEST_PASSWORD, iterations=100_000)
 
 
 class UploadTest(unittest.TestCase):
@@ -117,12 +121,32 @@ class UploadEndpointTest(unittest.TestCase):
             {
                 "database": self.database,
                 "data_directory": self.test_directory,
+                "sessions": SessionStore(AuthConfig("admin", TEST_PASSWORD_HASH, trusted_proxy=True)),
             },
         )
         self.server = DPLHTTPServer(("127.0.0.1", 0), handler)
         self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
         self.thread.start()
         self.base_url = f"http://127.0.0.1:{self.server.server_port}"
+        self.opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(http.cookiejar.CookieJar())
+        )
+        login = urllib.request.Request(
+            f"{self.base_url}/api/auth/login",
+            data=json.dumps({"username": "admin", "password": TEST_PASSWORD}).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json", "Origin": self.base_url},
+        )
+        with self.opener.open(login, timeout=10) as response:
+            self.login_cookie = response.headers["Set-Cookie"]
+            self.csrf_token = json.load(response)["csrfToken"]
+
+    def urlopen(self, request, timeout=10):
+        if isinstance(request, str):
+            request = urllib.request.Request(request)
+        if request.get_method() not in {"GET", "HEAD"}:
+            request.add_header("X-CSRF-Token", self.csrf_token)
+        return self.opener.open(request, timeout=timeout)
 
     def tearDown(self) -> None:
         self.server.shutdown()
@@ -141,7 +165,7 @@ class UploadEndpointTest(unittest.TestCase):
                 "X-Anlage-Module": "pwk",
             },
         )
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with self.urlopen(request, timeout=20) as response:
             payload = json.load(response)
             self.assertEqual(201, response.status)
 
@@ -160,49 +184,171 @@ class UploadEndpointTest(unittest.TestCase):
                 "X-Anlage-Module": "pwk",
             },
         )
-        with urllib.request.urlopen(request, timeout=20) as response:
+        with self.urlopen(request, timeout=20) as response:
             payload = json.load(response)
         self.assertEqual(55, payload["counts"]["total"])
         self.assertEqual(55, payload["comparison"]["unchanged"])
-        self.assertEqual(1, len(json.load(urllib.request.urlopen(f"{self.base_url}/api/projects"))["items"]))
+        self.assertEqual(1, len(json.load(self.urlopen(f"{self.base_url}/api/projects"))["items"]))
 
     def test_export_download_creates_a_checksum_history_entry(self) -> None:
-        with urllib.request.urlopen(f"{self.base_url}/api/exports/acron", timeout=20) as response:
+        request = urllib.request.Request(
+            f"{self.base_url}/api/exports/acron", data=b"", method="POST"
+        )
+        with self.urlopen(request, timeout=20) as response:
             content = response.read()
             checksum = response.headers["X-Export-SHA256"]
         self.assertTrue(content)
         self.assertEqual(64, len(checksum))
-        with urllib.request.urlopen(f"{self.base_url}/api/exports/history", timeout=10) as response:
+        with self.urlopen(f"{self.base_url}/api/exports/history", timeout=10) as response:
             history = json.load(response)["items"]
         self.assertEqual(checksum, history[0]["sha256"])
 
+    def test_export_get_is_disabled_and_server_blocks_open_errors(self) -> None:
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.urlopen(f"{self.base_url}/api/exports/acron", timeout=10)
+        self.assertEqual(404, error.exception.code)
+        error.exception.close()
+
+        record = next(item for item in list_datapoints(self.database) if item["provider_include_export"])
+        update_datapoint(
+            self.database,
+            record["id"],
+            {"revision": record["revision"], "provider": {"varName": ""}},
+        )
+        request = urllib.request.Request(
+            f"{self.base_url}/api/exports/provider", data=b"", method="POST"
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.urlopen(request, timeout=10)
+        self.assertEqual(422, error.exception.code)
+        payload = json.load(error.exception)
+        error.exception.close()
+        self.assertGreater(payload["issues"], 0)
+
     def test_operations_endpoint_reports_runtime_state(self) -> None:
-        with urllib.request.urlopen(f"{self.base_url}/api/operations", timeout=10) as response:
+        with self.urlopen(f"{self.base_url}/api/operations", timeout=10) as response:
             payload = json.load(response)
         self.assertEqual("sqlite", payload["database"]["backend"])
         self.assertGreater(payload["storage"]["totalBytes"], 0)
 
-    def test_data_api_is_available_without_login(self) -> None:
-        with urllib.request.urlopen(f"{self.base_url}/api/project", timeout=10) as response:
+    def test_data_api_requires_login(self) -> None:
+        request = urllib.request.Request(f"{self.base_url}/api/project")
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(request, timeout=10)
+        self.assertEqual(401, error.exception.code)
+        error.exception.close()
+        with self.urlopen(f"{self.base_url}/api/project", timeout=10) as response:
             payload = json.load(response)
         self.assertEqual("braukgraben", payload["project"]["code"])
 
-    def test_health_endpoint_reports_active_project(self) -> None:
+    def test_login_cookie_csrf_and_logout_protect_writes(self) -> None:
+        self.assertIn("HttpOnly", self.login_cookie)
+        self.assertIn("SameSite=Strict", self.login_cookie)
+        self.assertNotIn(TEST_PASSWORD, self.login_cookie)
+        unauthenticated_patch = urllib.request.Request(
+            f"{self.base_url}/api/datapoints/1",
+            data=b"{}",
+            method="PATCH",
+            headers={"Content-Type": "application/json"},
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(unauthenticated_patch, timeout=10)
+        self.assertEqual(401, error.exception.code)
+        error.exception.close()
+
+        missing_csrf = urllib.request.Request(
+            f"{self.base_url}/api/datapoints/bulk-review",
+            data=b'{}',
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.opener.open(missing_csrf, timeout=10)
+        self.assertEqual(403, error.exception.code)
+        error.exception.close()
+
+        logout = urllib.request.Request(
+            f"{self.base_url}/api/auth/logout",
+            data=b"{}",
+            method="POST",
+            headers={"Content-Type": "application/json"},
+        )
+        with self.urlopen(logout, timeout=10) as response:
+            self.assertFalse(json.load(response)["authenticated"])
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            self.opener.open(f"{self.base_url}/api/project", timeout=10)
+        self.assertEqual(401, error.exception.code)
+        error.exception.close()
+
+    def test_login_rejects_wrong_credentials_and_cross_origin_requests(self) -> None:
+        wrong_password = urllib.request.Request(
+            f"{self.base_url}/api/auth/login",
+            data=json.dumps({"username": "admin", "password": "not-the-password"}).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json", "Origin": self.base_url},
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(wrong_password, timeout=10)
+        self.assertEqual(401, error.exception.code)
+        self.assertEqual("Benutzername oder Kennwort ist falsch.", json.load(error.exception)["error"])
+        error.exception.close()
+
+        foreign_origin = urllib.request.Request(
+            f"{self.base_url}/api/auth/login",
+            data=json.dumps({"username": "admin", "password": TEST_PASSWORD}).encode("utf-8"),
+            method="POST",
+            headers={"Content-Type": "application/json", "Origin": "https://fremd.example"},
+        )
+        with self.assertRaises(urllib.error.HTTPError) as error:
+            urllib.request.urlopen(foreign_origin, timeout=10)
+        self.assertEqual(403, error.exception.code)
+        error.exception.close()
+
+    def test_trusted_loopback_proxy_limits_clients_independently(self) -> None:
+        for _ in range(5):
+            request = urllib.request.Request(
+                f"{self.base_url}/api/auth/login",
+                data=json.dumps({"username": "admin", "password": "wrong-password"}).encode("utf-8"),
+                method="POST",
+                headers={
+                    "Content-Type": "application/json",
+                    "Origin": self.base_url,
+                    "X-Real-IP": "10.20.0.10",
+                },
+            )
+            with self.assertRaises(urllib.error.HTTPError) as error:
+                urllib.request.urlopen(request, timeout=10)
+            self.assertEqual(401, error.exception.code)
+            error.exception.close()
+
+        other_client = urllib.request.Request(
+            f"{self.base_url}/api/auth/login",
+            data=json.dumps({"username": "admin", "password": TEST_PASSWORD}).encode("utf-8"),
+            method="POST",
+            headers={
+                "Content-Type": "application/json",
+                "Origin": self.base_url,
+                "X-Real-IP": "10.20.0.11",
+            },
+        )
+        with urllib.request.urlopen(other_client, timeout=10) as response:
+            self.assertTrue(json.load(response)["authenticated"])
+
+    def test_public_health_endpoint_is_minimal(self) -> None:
         with urllib.request.urlopen(f"{self.base_url}/api/health", timeout=10) as response:
             payload = json.load(response)
         self.assertEqual("ok", payload["status"])
-        self.assertEqual("sqlite", payload["backend"])
-        self.assertEqual("PWK Lippestraße; Braukgraben", payload["project"])
-        self.assertEqual("3.6.0", payload["version"])
+        self.assertEqual("3.7.1", payload["version"])
+        self.assertEqual({"status", "version"}, set(payload))
 
     def test_module_api_only_lists_internal_supported_types(self) -> None:
-        with urllib.request.urlopen(f"{self.base_url}/api/modules", timeout=10) as response:
+        with self.urlopen(f"{self.base_url}/api/modules", timeout=10) as response:
             payload = json.load(response)
         self.assertEqual(["pwk", "rue", "rueb"], [item["code"] for item in payload["items"]])
         rueb = next(item for item in payload["items"] if item["code"] == "rueb")
         self.assertEqual(["RÜB", "SKU", "RRB", "HRB", "RKB", "weitere RWB"], rueb["supportedTypes"])
         with self.assertRaises(urllib.error.HTTPError) as error:
-            urllib.request.urlopen(f"{self.base_url}/api/modules/rue/export", timeout=10)
+            self.urlopen(f"{self.base_url}/api/modules/rue/export", timeout=10)
         self.assertEqual(404, error.exception.code)
         error.exception.close()
 
@@ -217,7 +363,7 @@ class UploadEndpointTest(unittest.TestCase):
             },
         )
         with self.assertRaises(urllib.error.HTTPError) as error:
-            urllib.request.urlopen(request, timeout=10)
+            self.urlopen(request, timeout=10)
         self.assertEqual(400, error.exception.code)
         error.exception.close()
 
@@ -233,7 +379,7 @@ class UploadEndpointTest(unittest.TestCase):
             },
         )
         with self.assertRaises(urllib.error.HTTPError) as error:
-            urllib.request.urlopen(request, timeout=10)
+            self.urlopen(request, timeout=10)
         self.assertEqual(400, error.exception.code)
         error.exception.close()
         self.assertEqual(55, project_summary(self.database)["counts"]["total"])

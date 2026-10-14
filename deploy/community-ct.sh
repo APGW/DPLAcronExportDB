@@ -1,133 +1,104 @@
 #!/usr/bin/env bash
+set -Eeuo pipefail
 
-# Community-Scripts-CT-Skript. Die gemeinsame Engine bleibt upstream;
-# ct/ und install/ werden aus dem internen DPL-Repository geladen.
+# Internes, Community-Scripts-kompatibles CT-Einstiegsskript. Es führt keinen
+# veränderlichen Fremdcode als Proxmox-root aus: Erst das projektinterne Release
+# wird geladen und per eingebettetem SHA-256 geprüft, danach startet der darin
+# enthaltene LXC-Installer. Das Administratorkennwort wird erst dort abgefragt.
+
+# Ein versehentlich geerbtes Kennwort darf keinem Prüf-, Download- oder
+# Installationsprozess des Wrappers zugänglich sein.
+unset DPL_ADMIN_PASSWORD
 
 APP="dpl-acron"
-var_tags="database;intranet;automation"
-var_cpu="2"
-var_ram="2048"
-var_disk="8"
-var_os="debian"
-var_version="13"
-var_arm64="${var_arm64:-no}" # Python/MariaDB-Paketstand bisher nur auf amd64 verifiziert
-var_unprivileged="1"
+DPL_APP_VERSION="@@APP_VERSION@@"
+DPL_BUNDLE_SHA256="@@BUNDLE_SHA256@@"
+DPL_BASE_URL="${DPL_BASE_URL:-}"
+DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
+DPL_CA_CERT="${DPL_CA_CERT:-}"
+WEB_CIDRS="${WEB_CIDRS:-}"
 
-export DPL_APP_VERSION="@@APP_VERSION@@"
-export DPL_BUNDLE_SHA256="@@BUNDLE_SHA256@@"
-export DPL_BASE_URL="${DPL_BASE_URL:-}"
-export DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
-export DPL_CA_CERT="${DPL_CA_CERT:-}"
-export WEB_CIDRS="${WEB_CIDRS:-}"
-
-fail_early() {
+fail() {
   echo "Fehler: $*" >&2
   exit 1
 }
 
-[[ -n "$DPL_BASE_URL" ]] || fail_early "DPL_BASE_URL muss auf das interne Repository zeigen."
+[[ "${EUID:-$(id -u)}" -eq 0 ]] || fail "Das Skript muss als root auf Proxmox VE laufen."
+update_mode=0
+if ! command -v pct >/dev/null 2>&1; then
+  [[ -f /opt/dpl-acron/app.py ]] \
+    || fail "Weder Proxmox VE noch eine vorhandene DPL2ACRON-Installation wurde erkannt."
+  update_mode=1
+fi
+command -v curl >/dev/null 2>&1 || fail "curl fehlt auf dem Proxmox-Host."
+if [[ "$update_mode" -eq 1 && -z "$DPL_BASE_URL" && -r /etc/dpl-acron/update.env ]]; then
+  while IFS='=' read -r key value; do
+    case "$key" in
+      DPL_BASE_URL) DPL_BASE_URL="$value" ;;
+      DPL_ALLOW_HTTP) DPL_ALLOW_HTTP="$value" ;;
+    esac
+  done < /etc/dpl-acron/update.env
+fi
+[[ -n "$DPL_BASE_URL" ]] || fail "DPL_BASE_URL muss auf das interne Repository zeigen."
 DPL_BASE_URL="${DPL_BASE_URL%/}"
-export DPL_BASE_URL
 if [[ "$DPL_BASE_URL" == http://* && "$DPL_ALLOW_HTTP" != "1" ]]; then
-  fail_early "Für unverschlüsseltes Test-HTTP muss DPL_ALLOW_HTTP=1 gesetzt sein."
+  fail "Unverschlüsseltes Repository-HTTP erfordert ausdrücklich DPL_ALLOW_HTTP=1."
 fi
 [[ "$DPL_BASE_URL" == https://* || "$DPL_BASE_URL" == http://* ]] \
-  || fail_early "DPL_BASE_URL muss mit https:// oder http:// beginnen."
-[[ -n "$WEB_CIDRS" ]] || fail_early "WEB_CIDRS muss die erlaubten Intranet-/VPN-Netze enthalten."
+  || fail "DPL_BASE_URL muss mit https:// oder http:// beginnen."
+if [[ "$update_mode" -eq 0 ]]; then
+  [[ -n "$WEB_CIDRS" ]] || fail "WEB_CIDRS muss die erlaubten Intranet-/VPN-Netze enthalten."
+fi
+curl_ca_options=()
+if [[ -n "$DPL_CA_CERT" ]]; then
+  [[ "$DPL_CA_CERT" == /* && -f "$DPL_CA_CERT" && ! -L "$DPL_CA_CERT" ]] \
+    || fail "DPL_CA_CERT muss eine absolute, reguläre CA-Datei auf dem Proxmox-Host sein."
+  curl_ca_options=(--cacert "$DPL_CA_CERT")
+fi
 
-# Das aktuelle Community-Scripts-Core lädt das zu APP gehörende Installskript
-# aus COMMUNITY_SCRIPTS_URL/install/. Damit kann das Anwendungsmodul intern
-# bleiben, während die standardisierte LXC-Engine upstream gepflegt wird.
-export COMMUNITY_SCRIPTS_URL="$DPL_BASE_URL"
-export COMMUNITY_SCRIPTS_CORE_URL="${COMMUNITY_SCRIPTS_CORE_URL:-https://raw.githubusercontent.com/community-scripts/core/main}"
-source <(curl -fsSL "$COMMUNITY_SCRIPTS_CORE_URL/core/build.func")
+if [[ "$update_mode" -eq 0 ]]; then
+python3 - "$WEB_CIDRS" <<'PY' || fail "WEB_CIDRS enthält ein ungültiges oder zu breites Netz."
+import ipaddress
+import sys
 
-header_info "$APP"
-variables
-color
-catch_errors
+for raw in sys.argv[1].split(","):
+    network = ipaddress.ip_network(raw.strip(), strict=False)
+    if network.prefixlen == 0:
+        raise SystemExit(1)
+PY
+fi
 
-function update_script() {
-  header_info
-  check_container_storage
-  check_container_resources
-  [[ -f /opt/dpl-acron/app.py ]] || {
-    msg_error "Keine DPL2ACRON-Installation gefunden."
-    exit 1
-  }
+work_dir="$(mktemp -d)"
+chmod 0700 "$work_dir"
+trap 'rm -rf -- "$work_dir"' EXIT
+bundle="$work_dir/dpl-acron-debian13.tar.gz"
+source_dir="$work_dir/source"
+bundle_url="$DPL_BASE_URL/releases/$DPL_APP_VERSION/dpl-acron-debian13.tar.gz"
 
-  local update_dir update_bundle
-  update_dir="$(mktemp -d)"
-  update_bundle="$update_dir/dpl-acron-debian13.tar.gz"
-  msg_info "Lade und prüfe DPL2ACRON ${DPL_APP_VERSION}"
-  if [[ "$DPL_BASE_URL" == https://* ]]; then
-    curl -fsSL --proto '=https' --tlsv1.2 \
-      --output "$update_bundle" \
-      "${DPL_BASE_URL}/releases/${DPL_APP_VERSION}/dpl-acron-debian13.tar.gz"
-  else
-    curl -fsSL --proto '=http' \
-      --output "$update_bundle" \
-      "${DPL_BASE_URL}/releases/${DPL_APP_VERSION}/dpl-acron-debian13.tar.gz"
-  fi
-  printf '%s  %s\n' "$DPL_BUNDLE_SHA256" "$update_bundle" | sha256sum --check --status - || {
-    msg_error "SHA-256-Prüfung des DPL-Releases fehlgeschlagen."
-    rm -rf -- "$update_dir"
-    exit 1
-  }
-  mkdir -p "$update_dir/source"
-  tar -xzf "$update_bundle" -C "$update_dir/source"
-  bash "$update_dir/source/deploy/install-debian13.sh"
-  rm -rf -- "$update_dir"
-  msg_ok "DPL2ACRON ${DPL_APP_VERSION} aktualisiert"
-  exit 0
-}
+echo "Lade und prüfe DPL2ACRON $DPL_APP_VERSION ..."
+if [[ "$bundle_url" == https://* ]]; then
+  curl --fail --silent --show-error --location --proto '=https' --tlsv1.2 "${curl_ca_options[@]}" \
+    --output "$bundle" "$bundle_url"
+else
+  curl --fail --silent --show-error --location --proto '=http' \
+    --output "$bundle" "$bundle_url"
+fi
+printf '%s  %s\n' "$DPL_BUNDLE_SHA256" "$bundle" | sha256sum --check --status - \
+  || fail "SHA-256-Prüfung des Releases fehlgeschlagen; es wurde nichts ausgeführt."
+mkdir -m 0700 "$source_dir"
+tar -xzf "$bundle" -C "$source_dir"
+installer="$source_dir/deploy/proxmox-install-lxc.sh"
+[[ -f "$installer" ]] || fail "Der geprüfte LXC-Installer fehlt im Release."
 
-validate_cidrs() {
-  local item
-  IFS=',' read -r -a items <<< "$WEB_CIDRS"
-  for item in "${items[@]}"; do
-    [[ "$item" =~ ^[0-9A-Fa-f:.]+/[0-9]{1,3}$ ]] || {
-      msg_error "Ungültiges Netz in WEB_CIDRS: $item"
-      exit 1
-    }
-  done
-}
+if [[ "$update_mode" -eq 1 ]]; then
+  echo "Aktualisiere die vorhandene Installation auf $DPL_APP_VERSION ..."
+  exec bash "$source_dir/deploy/install-debian13.sh"
+fi
 
-apply_intranet_firewall() {
-  local firewall_file net0 item
-  firewall_file="$(mktemp)"
-  {
-    echo "[OPTIONS]"
-    echo "enable: 1"
-    echo "policy_in: DROP"
-    echo "policy_out: ACCEPT"
-    echo
-    echo "[RULES]"
-    echo "IN ACCEPT -p icmp -log nolog"
-    echo "IN ACCEPT -p udp -sport 67 -dport 68 -log nolog"
-    IFS=',' read -r -a items <<< "$WEB_CIDRS"
-    for item in "${items[@]}"; do
-      echo "IN ACCEPT -source $item -p tcp -dport 8765 -log nolog"
-    done
-  } > "$firewall_file"
-  cp -- "$firewall_file" "/etc/pve/firewall/${CTID}.fw"
-  rm -f -- "$firewall_file"
-
-  net0="$(pct config "$CTID" | sed -n 's/^net0: //p')"
-  if [[ "$net0" == *",firewall=0"* ]]; then
-    net0="${net0/,firewall=0/,firewall=1}"
-    pct set "$CTID" --net0 "$net0" >/dev/null
-  elif [[ "$net0" != *",firewall=1"* ]]; then
-    pct set "$CTID" --net0 "$net0,firewall=1" >/dev/null
-  fi
-}
-
-validate_cidrs
-start
-build_container
-apply_intranet_firewall
-description
-
-msg_ok "Installation abgeschlossen"
-echo -e "${APP} ist erreichbar unter:\n${BL}http://${IP}:8765/${CL}"
-echo -e "Datenbank und tägliche Sicherung laufen im CT ${CTID}."
+export CTID="${CTID:-$(pvesh get /cluster/nextid 2>/dev/null)}"
+export WEB_CIDRS
+export DPL_UPDATE_BASE_URL="$DPL_BASE_URL"
+export DPL_UPDATE_ALLOW_HTTP="$DPL_ALLOW_HTTP"
+export BUNDLE_PATH="$bundle"
+export BUNDLE_SHA256="$DPL_BUNDLE_SHA256"
+exec bash "$installer"

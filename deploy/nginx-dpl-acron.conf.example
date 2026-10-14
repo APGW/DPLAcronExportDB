@@ -1,14 +1,22 @@
 server {
-    # Optionale interne TLS-Variante. Es ist kein öffentlicher DNS-Name nötig.
+    # Verbindliche interne TLS-Grenze. Das Backend lauscht nur auf Loopback.
     listen 443 ssl;
     listen [::]:443 ssl;
     server_name dpl.example.intern;
 
     ssl_certificate /etc/ssl/certs/dpl.example.intern.crt;
     ssl_certificate_key /etc/ssl/private/dpl.example.intern.key;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_session_tickets off;
 
     client_max_body_size 25m;
     add_header Strict-Transport-Security "max-age=31536000" always;
+    location = /api/health {
+        proxy_pass http://127.0.0.1:8765;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-Proto https;
+    }
 
     location / {
         proxy_pass http://127.0.0.1:8765;

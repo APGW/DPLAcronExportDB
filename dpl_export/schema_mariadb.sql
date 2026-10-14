@@ -150,6 +150,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     field_name VARCHAR(255) NOT NULL,
     old_value TEXT,
     new_value TEXT,
+    changed_by VARCHAR(64) NOT NULL DEFAULT 'system',
     changed_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
     KEY idx_audit_project (project_id, changed_at),
     KEY idx_audit_changed_at (changed_at),

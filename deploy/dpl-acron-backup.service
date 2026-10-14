@@ -15,5 +15,5 @@ PrivateTmp=true
 ProtectHome=true
 ProtectSystem=strict
 ReadOnlyPaths=/etc/dpl-acron
-ReadWritePaths=/var/backups/dpl-acron
+ReadWritePaths=/var/backups/dpl-acron /var/lib/dpl-acron-backup
 NoNewPrivileges=true

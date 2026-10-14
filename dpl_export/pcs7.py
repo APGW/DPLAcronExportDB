@@ -8,6 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from .database import DatabaseTarget, connect, transaction
+from .coordination import synchronized
 from .xlsx_reader import Sheet, read_workbook
 
 
@@ -127,6 +128,7 @@ def parse_pcs7_export(path: Path | str) -> tuple[str, list[PCS7Reference]]:
     return kind, references
 
 
+@synchronized
 def import_pcs7_export(
     database: DatabaseTarget,
     filename: str,
@@ -135,9 +137,10 @@ def import_pcs7_export(
     data_directory: Path,
     project_code: str | None = None,
 ) -> dict[str, Any]:
-    from .upload import validate_xlsx_upload
+    from .upload import ensure_upload_capacity, validate_xlsx_upload
 
     safe_name = validate_xlsx_upload(filename, content, "einen PCS7-Export")
+    ensure_upload_capacity(data_directory, len(content))
     source_directory = data_directory / "pcs7"
     source_directory.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M%S-%f")

@@ -33,8 +33,10 @@ $ctDirectory = Join-Path $repositoryRoot "ct"
 $installDirectory = Join-Path $repositoryRoot "install"
 $jsonDirectory = Join-Path $repositoryRoot "json"
 $docsDirectory = Join-Path $repositoryRoot "docs"
-New-Item -ItemType Directory -Force -Path $releaseDirectory, $ctDirectory, $installDirectory, $jsonDirectory, $docsDirectory | Out-Null
+$testDirectory = Join-Path $repositoryRoot "test"
+New-Item -ItemType Directory -Force -Path $releaseDirectory, $ctDirectory, $installDirectory, $jsonDirectory, $docsDirectory, $testDirectory | Out-Null
 Copy-Item -LiteralPath (Join-Path $projectRoot "PROXMOX_CT.md") -Destination (Join-Path $docsDirectory "PROXMOX_CT.md") -Force
+Copy-Item -LiteralPath (Join-Path $projectRoot "PROXMOX_TEST.md") -Destination (Join-Path $docsDirectory "PROXMOX_TEST.md") -Force
 
 $publishedBundle = Join-Path $releaseDirectory "dpl-acron-debian13.tar.gz"
 $publishedInstaller = Join-Path $releaseDirectory "proxmox-install-lxc.sh"
@@ -54,6 +56,9 @@ $containerInstaller = Join-Path $installDirectory "dpl-acron-install.sh"
 Copy-Item -LiteralPath (Join-Path $PSScriptRoot "community-install.sh") -Destination $containerInstaller -Force
 $communityHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $communityPath).Hash.ToLowerInvariant()
 $containerInstallerHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $containerInstaller).Hash.ToLowerInvariant()
+$acceptanceTest = Join-Path $testDirectory "proxmox-acceptance.sh"
+Copy-Item -LiteralPath (Join-Path $PSScriptRoot "proxmox-acceptance.sh") -Destination $acceptanceTest -Force
+$acceptanceTestHash = (Get-FileHash -Algorithm SHA256 -LiteralPath $acceptanceTest).Hash.ToLowerInvariant()
 
 $metadata = [ordered]@{
     name = "DPL2ACRON"
@@ -64,7 +69,7 @@ $metadata = [ordered]@{
     type = "ct"
     updateable = $true
     privileged = $false
-    interface_port = 8765
+    interface_port = 443
     documentation = "$($InternalBaseUrl.TrimEnd('/'))/docs/PROXMOX_CT.md"
     website = "$($InternalBaseUrl.TrimEnd('/'))/"
     repository = "$($InternalBaseUrl.TrimEnd('/'))/"
@@ -85,7 +90,7 @@ $metadata = [ordered]@{
             }
         }
     )
-    default_credentials = [ordered]@{ username = $null; password = $null }
+    default_credentials = [ordered]@{ username = "admin"; password = $null }
     notes = @(
         [ordered]@{ text = "Nur über Intranet oder VPN veröffentlichen."; type = "warning" }
     )
@@ -105,6 +110,8 @@ $manifest = [ordered]@{
     community_script_sha256 = $communityHash
     community_install = "install/dpl-acron-install.sh"
     community_install_sha256 = $containerInstallerHash
+    acceptance_test = "test/proxmox-acceptance.sh"
+    acceptance_test_sha256 = $acceptanceTestHash
 }
 $manifestJson = $manifest | ConvertTo-Json
 [IO.File]::WriteAllText((Join-Path $repositoryRoot "release.json"), $manifestJson, $utf8NoBom)

@@ -139,6 +139,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
     field_name TEXT NOT NULL,
     old_value TEXT,
     new_value TEXT,
+    changed_by TEXT NOT NULL DEFAULT 'system',
     changed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 

@@ -6,6 +6,7 @@ from decimal import Decimal
 from typing import Any, Callable
 
 from .database import DatabaseConnection, DatabaseTarget, connect, transaction
+from .coordination import synchronized
 from .pcs7 import PCS7_KINDS, endpoint_candidates, normalize_endpoint
 
 
@@ -447,6 +448,7 @@ def _audit(
     field: str,
     old_value: Any,
     new_value: Any,
+    actor: str,
 ) -> None:
     if old_value == new_value:
         return
@@ -456,8 +458,8 @@ def _audit(
     connection.execute(
         """
         INSERT INTO audit_log(
-            project_id, datapoint_id, entity, field_name, old_value, new_value
-        ) VALUES (?, ?, ?, ?, ?, ?)
+            project_id, datapoint_id, entity, field_name, old_value, new_value, changed_by
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
         """,
         (
             project["project_id"],
@@ -466,6 +468,7 @@ def _audit(
             field,
             json.dumps(old_value, ensure_ascii=False),
             json.dumps(new_value, ensure_ascii=False),
+            actor,
         ),
     )
 
@@ -477,6 +480,7 @@ def _update_entity(
     entity: str,
     changes: dict[str, Any],
     field_map: dict[str, tuple[str, Callable[[Any], Any]]],
+    actor: str,
 ) -> None:
     current = connection.execute(f"SELECT * FROM {table} WHERE datapoint_id = ?", (datapoint_id,)).fetchone()
     for external_name, raw_value in changes.items():
@@ -491,13 +495,15 @@ def _update_entity(
             f"UPDATE {table} SET {column} = ?, updated_at = CURRENT_TIMESTAMP WHERE datapoint_id = ?",
             (new_value, datapoint_id),
         )
-        _audit(connection, datapoint_id, entity, external_name, old_value, new_value)
+        _audit(connection, datapoint_id, entity, external_name, old_value, new_value, actor)
 
 
+@synchronized
 def update_datapoint(
     database: DatabaseTarget,
     datapoint_id: int,
     payload: dict[str, Any],
+    actor: str = "system",
 ) -> dict[str, Any]:
     try:
         expected_revision = int(payload["revision"])
@@ -548,6 +554,7 @@ def update_datapoint(
                         "enabled",
                         old_value,
                         new_value,
+                        actor,
                     )
             if "pcs7Reviewed" in payload:
                 old_value = current["pcs7_reviewed"]
@@ -562,14 +569,14 @@ def update_datapoint(
                         """,
                         (new_value, new_value, datapoint_id),
                     )
-                    _audit(connection, datapoint_id, "datapoint", "pcs7Reviewed", old_value, new_value)
+                    _audit(connection, datapoint_id, "datapoint", "pcs7Reviewed", old_value, new_value, actor)
             elif payload.get("acron") or payload.get("provider"):
                 if current["pcs7_reviewed"]:
                     connection.execute(
                         "UPDATE datapoints SET pcs7_reviewed = 0, pcs7_reviewed_at = NULL WHERE id = ?",
                         (datapoint_id,),
                     )
-                    _audit(connection, datapoint_id, "datapoint", "pcs7Reviewed", 1, 0)
+                    _audit(connection, datapoint_id, "datapoint", "pcs7Reviewed", 1, 0, actor)
             _update_entity(
                 connection,
                 datapoint_id,
@@ -577,6 +584,7 @@ def update_datapoint(
                 "acron",
                 payload.get("acron", {}),
                 ACRON_FIELDS,
+                actor,
             )
             _update_entity(
                 connection,
@@ -585,16 +593,19 @@ def update_datapoint(
                 "provider",
                 payload.get("provider", {}),
                 PROVIDER_FIELDS,
+                actor,
             )
     finally:
         connection.close()
     return get_datapoint(database, datapoint_id)
 
 
+@synchronized
 def bulk_review_datapoints(
     database: DatabaseTarget,
     entries: list[dict[str, Any]],
     reviewed: bool,
+    actor: str = "system",
 ) -> list[dict[str, Any]]:
     if not isinstance(entries, list) or not entries or len(entries) > 500:
         raise ValueError("Für die Sammelprüfung werden 1 bis 500 Datensätze erwartet.")
@@ -647,6 +658,7 @@ def bulk_review_datapoints(
                 _audit(
                     connection, datapoint_id, "datapoint", "pcs7Reviewed",
                     current["pcs7_reviewed"], new_value,
+                    actor,
                 )
     finally:
         connection.close()

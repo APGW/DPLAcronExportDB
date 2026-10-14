@@ -83,7 +83,12 @@ class ImprovementTest(unittest.TestCase):
         marker = {"filename": "dpl-acron-test.sql.gz", "createdAt": "2026-10-05T08:00:00Z"}
         (self.directory / "backup-status.json").write_text(json.dumps(marker), encoding="utf-8")
 
-        status = operations_status(self.database, self.directory, backup_directory)
+        status = operations_status(
+            self.database,
+            self.directory,
+            backup_directory,
+            self.directory / "backup-status.json",
+        )
 
         self.assertEqual("sqlite", status["database"]["backend"])
         self.assertEqual(1, status["projects"]["current"])

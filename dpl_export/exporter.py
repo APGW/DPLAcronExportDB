@@ -8,6 +8,25 @@ from pathlib import Path
 from typing import Any
 
 from .database import DatabaseTarget, connect
+from .coordination import STATE_LOCK, synchronized
+
+
+class ExportBlockedError(ValueError):
+    def __init__(self, issue_count: int) -> None:
+        self.issue_count = int(issue_count)
+        super().__init__(
+            f"Export gesperrt: {self.issue_count} fachliche Fehler müssen zuerst korrigiert werden."
+        )
+
+
+def _validated_summary(database: DatabaseTarget, project_code: str | None = None) -> dict[str, Any]:
+    from .service import project_summary
+
+    summary = project_summary(database, project_code)
+    error_count = int(summary["issues"]["error"] or 0)
+    if error_count:
+        raise ExportBlockedError(error_count)
+    return summary
 
 
 def _project(connection, project_code: str | None = None):
@@ -73,7 +92,13 @@ def _range_overrides(record) -> dict[str, str]:
     return result
 
 
+@synchronized
 def acron_export(database: DatabaseTarget, project_code: str | None = None) -> tuple[str, bytes]:
+    _validated_summary(database, project_code)
+    return _acron_export(database, project_code)
+
+
+def _acron_export(database: DatabaseTarget, project_code: str | None = None) -> tuple[str, bytes]:
     connection = connect(database)
     project = _project(connection, project_code)
     headers, defaults = _template(connection, project["id"], "acron")
@@ -133,7 +158,13 @@ def acron_export(database: DatabaseTarget, project_code: str | None = None) -> t
     return project["acron_filename"], _encode_tsv(headers, rows)
 
 
+@synchronized
 def provider_export(database: DatabaseTarget, project_code: str | None = None) -> tuple[str, bytes]:
+    _validated_summary(database, project_code)
+    return _provider_export(database, project_code)
+
+
+def _provider_export(database: DatabaseTarget, project_code: str | None = None) -> tuple[str, bytes]:
     connection = connect(database)
     project = _project(connection, project_code)
     headers, defaults = _template(connection, project["id"], "provider")
@@ -170,16 +201,19 @@ def write_exports(
     output_directory: Path,
     project_code: str | None = None,
 ) -> list[Path]:
-    output_directory.mkdir(parents=True, exist_ok=True)
-    outputs = []
-    for export_function in (acron_export, provider_export):
-        filename, content = export_function(database, project_code)
-        path = output_directory / filename
-        path.write_bytes(content)
-        outputs.append(path)
-    return outputs
+    with STATE_LOCK:
+        _validated_summary(database, project_code)
+        output_directory.mkdir(parents=True, exist_ok=True)
+        outputs = []
+        for export_function in (_acron_export, _provider_export):
+            filename, content = export_function(database, project_code)
+            path = output_directory / filename
+            path.write_bytes(content)
+            outputs.append(path)
+        return outputs
 
 
+@synchronized
 def record_export_run(
     database: DatabaseTarget,
     project_code: str | None,
@@ -187,9 +221,17 @@ def record_export_run(
     filename: str,
     content: bytes,
 ) -> dict[str, Any]:
-    from .service import project_summary
+    summary = _validated_summary(database, project_code)
+    return _record_export_run(database, summary, kind, filename, content)
 
-    summary = project_summary(database, project_code)
+
+def _record_export_run(
+    database: DatabaseTarget,
+    summary: dict[str, Any],
+    kind: str,
+    filename: str,
+    content: bytes,
+) -> dict[str, Any]:
     project = summary["project"]
     count_key = "enabled" if kind == "acron" else "provider"
     connection = connect(database)
@@ -224,6 +266,23 @@ def record_export_run(
         "sha256": hashlib.sha256(content).hexdigest(),
         "recordCount": int(summary["counts"][count_key] or 0),
     }
+
+
+def generate_recorded_export(
+    database: DatabaseTarget,
+    project_code: str | None,
+    kind: str,
+) -> tuple[str, bytes, dict[str, Any]]:
+    """Validate, serialize and record one immutable in-process project snapshot."""
+    if kind not in {"acron", "provider"}:
+        raise ValueError(f"Unbekannte Exportart: {kind}")
+    with STATE_LOCK:
+        summary = _validated_summary(database, project_code)
+        resolved_code = str(summary["project"]["code"])
+        export_function = _acron_export if kind == "acron" else _provider_export
+        filename, content = export_function(database, resolved_code)
+        run = _record_export_run(database, summary, kind, filename, content)
+        return filename, content, run
 
 
 def export_history(

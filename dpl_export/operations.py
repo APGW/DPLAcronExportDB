@@ -20,6 +20,7 @@ def operations_status(
     database: DatabaseTarget,
     data_directory: Path,
     backup_directory: Path = Path("/var/backups/dpl-acron"),
+    backup_status_file: Path = Path("/var/lib/dpl-acron-backup/backup-status.json"),
 ) -> dict[str, Any]:
     connection = connect(database)
     project_counts = connection.execute(
@@ -41,9 +42,8 @@ def operations_status(
         backups = []
     latest_backup = backups[-1] if backups else None
     backup_status: dict[str, Any] = {}
-    status_file = data_directory / "backup-status.json"
     try:
-        backup_status = json.loads(status_file.read_text(encoding="utf-8"))
+        backup_status = json.loads(backup_status_file.read_text(encoding="utf-8"))
     except (OSError, ValueError, TypeError):
         pass
     modules = list_modules(data_directory / "modules")
@@ -65,6 +65,7 @@ def operations_status(
         "backup": {
             "available": latest_backup is not None or bool(backup_status.get("filename")),
             "filename": latest_backup.name if latest_backup else backup_status.get("filename"),
+            "stateFilename": backup_status.get("stateFilename"),
             "createdAt": _iso_timestamp(latest_backup) if latest_backup else backup_status.get("createdAt"),
         },
         "latestImport": dict(latest_import) if latest_import else None,
