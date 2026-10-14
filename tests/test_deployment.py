@@ -192,6 +192,8 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("DPL_SECURE_COOKIE=1", installer)
         self.assertIn("DPL_TRUST_PROXY=1", installer)
         self.assertIn("systemctl enable nginx.service", installer)
+        self.assertIn("systemctl restart nginx.service", installer)
+        self.assertLess(installer.index("nginx -t"), installer.index("systemctl restart nginx.service"))
         self.assertIn("proxy_pass http://127.0.0.1:8765", nginx)
         self.assertIn("listen 443 ssl", nginx)
         proxmox = (ROOT / "deploy" / "proxmox-install-lxc.sh").read_text(encoding="utf-8")

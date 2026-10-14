@@ -304,6 +304,11 @@ ln -sfn /etc/nginx/sites-available/dpl-acron.conf /etc/nginx/sites-enabled/dpl-a
 rm -f -- /etc/nginx/sites-enabled/default
 nginx -t
 systemctl enable nginx.service
+systemctl restart nginx.service
+systemctl is-active --quiet nginx.service || {
+  echo "Nginx konnte mit der HTTPS-Konfiguration nicht gestartet werden." >&2
+  exit 1
+}
 
 if [[ ! -f "$database_env" ]]; then
   db_password="$(python3 -c 'import secrets; print(secrets.token_urlsafe(32))')"
