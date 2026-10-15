@@ -6,12 +6,14 @@ for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
 builtin unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
-  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 readonly BASH_BIN=/bin/bash
 readonly CURL_BIN=/usr/bin/curl
+readonly MKTEMP_BIN=/usr/bin/mktemp
 readonly SHA256SUM_BIN=/usr/bin/sha256sum
+readonly STAT_BIN=/usr/bin/stat
 
 # Erst nach der Bereinigung werden die vom Community-Scripts-Framework
 # gelieferten Hilfsfunktionen geladen und ausgeführt.
@@ -59,7 +61,17 @@ else
   exit 1
 fi
 
-release_dir="$(mktemp -d)"
+[[ -d /root && ! -L /root ]] || {
+  msg_error "/root ist kein sicheres temporäres Stammverzeichnis."
+  exit 1
+}
+root_owner="$($STAT_BIN -Lc '%u' /root)"
+root_mode="$($STAT_BIN -Lc '%a' /root)"
+[[ "$root_owner" == "0" && $((8#$root_mode & 022)) -eq 0 ]] || {
+  msg_error "/root muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
+  exit 1
+}
+release_dir="$($MKTEMP_BIN -d -p /root .dpl2acron-container.XXXXXX)"
 trap 'rm -rf -- "$release_dir"' EXIT
 bundle="$release_dir/dpl-acron-debian13.tar.gz"
 

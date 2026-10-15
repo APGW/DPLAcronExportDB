@@ -5,7 +5,7 @@ einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemei
 Korrektur bereit und erzeugt getrennte ACRON- und
 WINCC60-Provider-Exporte.
 
-## Version 3.7.3
+## Version 3.7.4
 
 - prüft eine DPL vor der Übernahme und zeigt neue, geänderte sowie entfallene Datensätze an
 - bewahrt vorherige Projektversionen schreibgeschützt und auswählbar auf
@@ -18,6 +18,8 @@ WINCC60-Provider-Exporte.
 - startet die privilegierte Proxmox-Installation mit bereinigter Umgebung und festen Systempfaden
 - begrenzt alle Installer-Downloads nach Größe, Laufzeit und Mindestgeschwindigkeit
 - normalisiert LAN-/VPN-Netze und lässt öffentliche Netze nur nach ausdrücklicher Freigabe zu
+- verwendet für privilegierte Arbeitsdateien ausschließlich ein geprüftes, root-kontrolliertes Verzeichnis
+- startet einen neuen Container nur bei global aktivierter Proxmox-Firewall und aktivem Firewall-Backend
 
 Die Tabellenansicht unterstützt Einzel- und Mehrfachauswahl. PCS7-Abweichungen
 können direkt in der Zeile oder gesammelt als geprüft markiert werden. Ein

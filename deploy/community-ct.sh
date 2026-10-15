@@ -22,7 +22,7 @@ for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
 builtin unset DPL_ADMIN_PASSWORD BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
-  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -36,6 +36,7 @@ readonly PYESH_BIN=/usr/bin/pvesh
 readonly PYTHON_BIN=/usr/bin/python3
 readonly RM_BIN=/bin/rm
 readonly SHA256SUM_BIN=/usr/bin/sha256sum
+readonly STAT_BIN=/usr/bin/stat
 readonly TAR_BIN=/usr/bin/tar
 
 fail() {
@@ -119,7 +120,12 @@ PY
 )" || fail "WEB_CIDRS enthält ein ungültiges, spezielles, öffentliches oder zu breites Netz."
 fi
 
-work_dir="$($MKTEMP_BIN -d)"
+[[ -d /root && ! -L /root ]] || fail "/root ist kein sicheres temporäres Stammverzeichnis."
+root_owner="$($STAT_BIN -Lc '%u' /root)"
+root_mode="$($STAT_BIN -Lc '%a' /root)"
+[[ "$root_owner" == "0" && $((8#$root_mode & 022)) -eq 0 ]] \
+  || fail "/root muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
+work_dir="$($MKTEMP_BIN -d -p /root .dpl2acron-release.XXXXXX)"
 /bin/chmod 0700 "$work_dir"
 trap '"$RM_BIN" -rf -- "$work_dir"' EXIT
 bundle="$work_dir/dpl-acron-debian13.tar.gz"

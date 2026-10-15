@@ -338,7 +338,7 @@ class UploadEndpointTest(unittest.TestCase):
         with urllib.request.urlopen(f"{self.base_url}/api/health", timeout=10) as response:
             payload = json.load(response)
         self.assertEqual("ok", payload["status"])
-        self.assertEqual("3.7.3", payload["version"])
+        self.assertEqual("3.7.4", payload["version"])
         self.assertEqual({"status", "version"}, set(payload))
 
     def test_module_api_only_lists_internal_supported_types(self) -> None:

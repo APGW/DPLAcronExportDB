@@ -208,7 +208,12 @@ class DebianDeploymentTest(unittest.TestCase):
         guide = (ROOT / "PROXMOX_CT.md").read_text(encoding="utf-8")
         self.assertIn("--unprivileged 1", script)
         self.assertIn("firewall=1", script)
-        self.assertIn("--onboot 1", script)
+        self.assertIn("--onboot 0", script)
+        self.assertIn('pct set "$ctid" --onboot 1', script)
+        self.assertLess(
+            script.index("health="),
+            script.index('pct set "$ctid" --onboot 1'),
+        )
         self.assertNotIn("--start 1", script)
         self.assertLess(script.index("policy_in: DROP"), script.index('pct start "$ctid"'))
         self.assertIn('[[ -n "$web_cidrs" ]]', script)
@@ -221,6 +226,22 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("/api/health", script)
         self.assertIn('RESUME_EXISTING', script)
         self.assertIn('cp -- "$firewall_temp"', script)
+        self.assertIn("/cluster/firewall/options --output-format json", script)
+        self.assertIn("/firewall/options", script)
+        self.assertIn('get("nftables", 0)', script)
+        self.assertIn("proxmox-firewall.service", script)
+        self.assertIn("pve-firewall.service", script)
+        self.assertIn("require_effective_proxmox_firewall", script)
+        self.assertLess(
+            script.index('cp -- "$firewall_temp"'),
+            script.rindex("require_effective_proxmox_firewall"),
+        )
+        self.assertLess(
+            script.rindex("require_effective_proxmox_firewall"),
+            script.index('pct start "$ctid"'),
+        )
+        self.assertNotIn("systemctl enable --now pve-firewall", script)
+        self.assertNotIn("systemctl enable --now proxmox-firewall", script)
         self.assertNotIn('install -m 0640 "$firewall_temp"', script)
         self.assertNotIn('pct exec "$ctid" -- install -d', script)
         self.assertIn('pct exec "$ctid" -- mkdir -p /root/dpl-acron-release', script)
@@ -273,12 +294,18 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("DROP DATABASE", acceptance)
         self.assertIn("gzip -t", acceptance)
         self.assertIn("tar -tzf", acceptance)
+        self.assertIn("/cluster/firewall/options --output-format json", acceptance)
+        self.assertIn("/firewall/options", acceptance)
+        self.assertIn('get("nftables", 0)', acceptance)
+        self.assertIn("proxmox-firewall.service", acceptance)
+        self.assertIn("pve-firewall.service", acceptance)
+        self.assertIn("require_effective_proxmox_firewall", acceptance)
         builder = (ROOT / "deploy" / "build-internal-repository.ps1").read_text(encoding="utf-8")
         self.assertIn('acceptance_test = "test/proxmox-acceptance.sh"', builder)
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.7.3", guide)
+        self.assertIn("EXPECTED_VERSION=3.7.4", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -333,7 +360,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)
@@ -362,7 +389,10 @@ class DebianDeploymentTest(unittest.TestCase):
                     self.assertIn("set -Eeuo pipefail", block)
                     self.assertIn("/usr/bin/sha256sum --check --status", block)
                     self.assertLess(block.index("sha256sum"), block.index("/bin/bash"))
-                    self.assertIn("/usr/bin/mktemp -d", block)
+                    if name.startswith("PROXMOX_"):
+                        self.assertIn("/usr/bin/mktemp -d -p /root", block)
+                    else:
+                        self.assertIn("/usr/bin/mktemp -d", block)
                     self.assertIn("trap '", block)
                     if "curl" in block:
                         self.assertIn("/usr/bin/curl --disable", block)
@@ -390,6 +420,7 @@ class DebianDeploymentTest(unittest.TestCase):
                 self.assertTrue(content.startswith("#!/bin/bash -p\n"))
                 self.assertIn("PYTHONPATH PYTHONHOME PYTHONSTARTUP", content)
                 self.assertIn("PATH=/usr/sbin:/usr/bin:/sbin:/bin", content)
+                self.assertIn("TMPDIR", content)
         entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
         community = (ROOT / "deploy" / "community-ct.sh").read_text(encoding="utf-8")
         debian = (ROOT / "deploy" / "install-debian13.sh").read_text(encoding="utf-8")
@@ -408,6 +439,87 @@ class DebianDeploymentTest(unittest.TestCase):
             community_install.index("builtin unset BASH_ENV ENV"),
             community_install.index("setting_up_container"),
         )
+
+    def test_privileged_temporary_directories_ignore_ambient_tmpdir(self) -> None:
+        expected_patterns = {
+            "bootstrap-proxmox.sh": ".dpl2acron-bootstrap.XXXXXX",
+            "install-proxmox-entry.sh": ".dpl2acron-entry.XXXXXX",
+            "community-ct.sh": ".dpl2acron-release.XXXXXX",
+            "community-install.sh": ".dpl2acron-container.XXXXXX",
+            "proxmox-install-lxc.sh": ".dpl2acron-lxc.XXXXXX",
+            "proxmox-acceptance.sh": ".dpl2acron-acceptance.XXXXXX",
+        }
+        for name, pattern in expected_patterns.items():
+            with self.subTest(script=name):
+                content = (ROOT / "deploy" / name).read_text(encoding="utf-8")
+                self.assertIn("-d -p /root", content)
+                self.assertIn(pattern, content)
+                self.assertIn("! -L /root", content)
+                self.assertIn("8#$root_mode & 022", content)
+                self.assertNotRegex(content, r'mktemp(?:"|\))? -d["\)]?\s*$')
+        proxmox = (ROOT / "deploy" / "proxmox-install-lxc.sh").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn('firewall_temp="$work_dir/ct-firewall.fw"', proxmox)
+
+    def test_firewall_option_parser_fails_closed(self) -> None:
+        script = (ROOT / "deploy" / "proxmox-install-lxc.sh").read_text(
+            encoding="utf-8"
+        )
+        match = re.search(
+            r'"\$PYTHON_BIN" -I - "\$cluster_options" <<\'PY\' \\\n'
+            r'\s+\|\| fail[^\n]*\n(.*?)\nPY',
+            script,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(match)
+        validator = match.group(1)
+
+        def validate(payload: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [sys.executable, "-I", "-", payload],
+                input=validator,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        for payload in ('{"enable":1}', '{"enable":true}', '{"enable":"1"}'):
+            with self.subTest(payload=payload):
+                self.assertEqual(0, validate(payload).returncode)
+        for payload in ('{}', '{"enable":0}', '{"enable":false}', 'not-json'):
+            with self.subTest(payload=payload):
+                self.assertNotEqual(0, validate(payload).returncode)
+
+        backend_match = re.search(
+            r'required_backend="\$\("\$PYTHON_BIN" -I - "\$node_options" '
+            r"<<'PY'\n(.*?)\nPY",
+            script,
+            re.DOTALL,
+        )
+        self.assertIsNotNone(backend_match)
+        selector = backend_match.group(1)
+
+        def select_backend(payload: str) -> subprocess.CompletedProcess[str]:
+            return subprocess.run(
+                [sys.executable, "-I", "-", payload],
+                input=selector,
+                text=True,
+                capture_output=True,
+                check=False,
+            )
+
+        for payload in ('{"nftables":1}', '{"nftables":true}'):
+            with self.subTest(payload=payload):
+                result = select_backend(payload)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("proxmox-firewall.service", result.stdout.strip())
+        for payload in ('{}', '{"nftables":0}', '{"nftables":false}'):
+            with self.subTest(payload=payload):
+                result = select_backend(payload)
+                self.assertEqual(0, result.returncode, result.stderr)
+                self.assertEqual("pve-firewall.service", result.stdout.strip())
+        self.assertNotEqual(0, select_backend("not-json").returncode)
 
     def test_private_repository_ca_is_used_and_persisted(self) -> None:
         community = (ROOT / "deploy" / "community-ct.sh").read_text(encoding="utf-8")

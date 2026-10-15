@@ -17,7 +17,7 @@ for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
 builtin unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
-  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -60,7 +60,12 @@ if [[ -n "$ca_cert" ]]; then
   curl_ca_options=(--cacert "$ca_cert")
 fi
 
-work_dir="$("$MKTEMP_BIN" -d)"
+[[ -d /root && ! -L /root ]] || fail "/root ist kein sicheres temporäres Stammverzeichnis."
+root_owner="$("$STAT_BIN" -Lc '%u' /root)"
+root_mode="$("$STAT_BIN" -Lc '%a' /root)"
+[[ "$root_owner" == "0" && $((8#$root_mode & 022)) -eq 0 ]] \
+  || fail "/root muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
+work_dir="$("$MKTEMP_BIN" -d -p /root .dpl2acron-bootstrap.XXXXXX)"
 "$CHMOD_BIN" 0700 "$work_dir"
 trap '"$RM_BIN" -rf -- "$work_dir"' EXIT
 installer="$work_dir/install-proxmox.sh"

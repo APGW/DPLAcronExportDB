@@ -3,13 +3,15 @@ set -Eeuo pipefail
 
 # Nicht-destruktive Abnahme einer installierten DPL2ACRON-Testinstanz.
 # Ausführung auf dem Proxmox-VE-Host:
-#   CTID=100 EXPECTED_VERSION=3.7.3 /bin/bash -p --noprofile --norc proxmox-acceptance.sh
+#   CTID=100 EXPECTED_VERSION=3.7.4 /bin/bash -p --noprofile --norc proxmox-acceptance.sh
 
 ctid="${CTID:-}"
-expected_version="${EXPECTED_VERSION:-3.7.3}"
+expected_version="${EXPECTED_VERSION:-3.7.4}"
 checks=0
 temporary_dir=""
 restore_database=""
+builtin unset TMPDIR BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
 
 pass() {
   checks=$((checks + 1))
@@ -29,17 +31,50 @@ cleanup() {
 }
 trap cleanup EXIT
 
+require_effective_proxmox_firewall() {
+  local cluster_options node_options node_name required_backend
+  cluster_options="$(pvesh get /cluster/firewall/options --output-format json 2>/dev/null)" \
+    || fail "Der Datacenter-Firewallstatus konnte nicht gelesen werden."
+  python3 -I - "$cluster_options" <<'PY' \
+    || fail "Die Proxmox-Firewall ist im Datacenter nicht aktiviert."
+import json
+import sys
+
+value = json.loads(sys.argv[1]).get("enable")
+if value not in (1, True, "1", "true", "on", "yes"):
+    raise SystemExit(1)
+PY
+  node_name="$(hostname -s)"
+  [[ "$node_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] \
+    || fail "Der lokale Proxmox-Node konnte nicht sicher bestimmt werden."
+  node_options="$(pvesh get "/nodes/$node_name/firewall/options" --output-format json 2>/dev/null)" \
+    || fail "Die Firewalloptionen des Proxmox-Nodes $node_name konnten nicht gelesen werden."
+  required_backend="$(python3 -I - "$node_options" <<'PY'
+import json
+import sys
+
+value = json.loads(sys.argv[1]).get("nftables", 0)
+enabled = value in (1, True, "1", "true", "on", "yes")
+print("proxmox-firewall.service" if enabled else "pve-firewall.service")
+PY
+)" || fail "Die Firewalloption nftables des Proxmox-Nodes ist ungültig."
+  systemctl is-active --quiet "$required_backend" 2>/dev/null \
+    || fail "Das konfigurierte Proxmox-Firewall-Backend ist nicht aktiv: $required_backend"
+}
+
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || fail "Als root auf dem Proxmox-Host ausführen."
 command -v pct >/dev/null 2>&1 || fail "pct wurde nicht gefunden."
 command -v python3 >/dev/null 2>&1 || fail "python3 wurde nicht gefunden."
 command -v curl >/dev/null 2>&1 || fail "curl wurde nicht gefunden."
+command -v pvesh >/dev/null 2>&1 || fail "pvesh wurde nicht gefunden."
 [[ "$ctid" =~ ^[1-9][0-9]{2,8}$ ]] || fail "CTID muss eine gültige Proxmox-ID sein."
 [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "EXPECTED_VERSION ist ungültig."
 
 config="$(pct config "$ctid")" || fail "CT $ctid wurde nicht gefunden."
 grep -Fqx 'unprivileged: 1' <<< "$config" || fail "CT $ctid ist nicht unprivilegiert."
 grep -Eq '^net0: .*firewall=1' <<< "$config" || fail "Die CT-Netzwerkschnittstelle verwendet nicht die Proxmox-Firewall."
-pass "Unprivilegierter CT und Interface-Firewall"
+require_effective_proxmox_firewall
+pass "Unprivilegierter CT und wirksame Proxmox-Firewall"
 
 [[ "$(pct status "$ctid" | awk '{print $2}')" == "running" ]] || fail "CT $ctid läuft nicht."
 os_version="$(pct exec "$ctid" -- sh -c '. /etc/os-release; printf %s "$VERSION_ID"')"
@@ -80,7 +115,12 @@ if grep -Eq -- '-dport (8765|3306)([[:space:]]|$)' "$firewall_file"; then
 fi
 pass "Proxmox-Firewall erlaubt nur den vorgesehenen Webport"
 
-temporary_dir="$(mktemp -d)"
+[[ -d /root && ! -L /root ]] || fail "/root ist kein sicheres temporäres Stammverzeichnis."
+root_owner="$(stat -Lc '%u' /root)"
+root_mode="$(stat -Lc '%a' /root)"
+[[ "$root_owner" == "0" && $((8#$root_mode & 022)) -eq 0 ]] \
+  || fail "/root muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
+temporary_dir="$(mktemp -d -p /root .dpl2acron-acceptance.XXXXXX)"
 chmod 0700 "$temporary_dir"
 ca_file="$temporary_dir/dpl2acron-ca.crt"
 pct pull "$ctid" /etc/dpl-acron/tls/ca.crt "$ca_file" >/dev/null

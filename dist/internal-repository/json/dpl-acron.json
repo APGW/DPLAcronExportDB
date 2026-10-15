@@ -12,16 +12,16 @@
   "updateable": true,
   "privileged": false,
   "interface_port": 443,
-  "documentation": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository/docs/PROXMOX_CT.md",
-  "website": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository/",
-  "repository": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository/",
+  "documentation": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository/docs/PROXMOX_CT.md",
+  "website": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository/",
+  "repository": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository/",
   "architectures": [
     "amd64"
   ],
   "platforms": [
     "pve"
   ],
-  "logo": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository/assets/agw-logo.png",
+  "logo": "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository/assets/agw-logo.png",
   "install_methods": [
     {
       "type": "default",

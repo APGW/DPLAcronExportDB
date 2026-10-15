@@ -53,14 +53,14 @@ Platzhalter durch die freigegebene Prüfsumme aus `release.json` ersetzen:
 (
   set -Eeuo pipefail
   umask 077
-  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-bootstrap.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' '245eb06e8536510cde4f7b2b8658d950c2cec5e1bd21002065853853384a3e21' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' '7cf846a79b2d73b5b52f266c6f566be3e003d042c5ec4c337e73eb866c802f14' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -86,14 +86,14 @@ folgenden Downloads angegeben:
 (
   set -Eeuo pipefail
   umask 077
-  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-bootstrap.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --cacert /usr/local/share/ca-certificates/firma.crt \
     --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
     --max-time 60 --speed-limit 1024 --speed-time 15 --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' '245eb06e8536510cde4f7b2b8658d950c2cec5e1bd21002065853853384a3e21' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' '7cf846a79b2d73b5b52f266c6f566be3e003d042c5ec4c337e73eb866c802f14' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -123,13 +123,13 @@ danach ausgeführt:
 (
   set -Eeuo pipefail
   umask 077
-  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-http-test.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=http' --proto-redir '=http' \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS \
     http://WINDOWS-IP:8088/ct/dpl-acron.sh -o "$BOOTSTRAP_DIR/dpl-acron.sh"
-  printf '%s  %s\n' 'dc7d5224cdc85432a869b4514971eb4ac02eadfee58a9c66d5b2563ee677d371' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
+  printf '%s  %s\n' '19adc39543abeda1673074423eb03e07fa457af8c3796a0d6e79cbeb29333cdf' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \
@@ -274,11 +274,23 @@ Standardrichtlinie `DROP` an. Es erlaubt:
 - `443/tcp` ausschließlich aus `WEB_CIDRS`
 - optional `22/tcp` ausschließlich aus `SSH_CIDRS`
 
-Die Firewall muss zusätzlich auf Datacenter-/Node-Ebene gemäß der vorhandenen
-Proxmox-Konfiguration aktiviert sein. Es darf weder am Internet-Router noch an
+Der Installer prüft vor dem ersten Containerstart, dass die Firewall unter
+`Datacenter > Firewall > Options` aktiviert ist und auf dem aktuellen Node
+der zur Node-Option `nftables` passende Dienst aktiv ist:
+`proxmox-firewall.service` bei aktivem nftables-Backend, andernfalls
+`pve-firewall.service`. Er
+ändert diese gemeinsam genutzten Hosteinstellungen nicht automatisch. Eine
+separate Node-Host-Firewalloption ist nur für Regeln des Proxmox-Hosts selbst
+zuständig und keine Voraussetzung für die CT-Regeln. Es darf weder am
+Internet-Router noch an
 einer vorgeschalteten Firewall eine öffentliche Weiterleitung für `443`
 oder `3306` auf diesen Container geben. VPN-Clients greifen per Routing auf die
 private CT-IP zu.
+
+Der Container wird zunächst mit deaktiviertem Autostart erstellt. Erst nach
+erfolgreicher Installation und bestandener lokaler Gesundheitsprüfung setzt der
+Installer `onboot=1`. Bei einer fehlgeschlagenen Firewallprüfung bleibt der
+Container gestoppt und startet auch nach einem Hostneustart nicht automatisch.
 
 ## Wiederverwendbare CT-Vorlage
 

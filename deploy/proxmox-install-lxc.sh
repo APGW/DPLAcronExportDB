@@ -30,15 +30,20 @@ for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
 builtin unset DPL_ADMIN_PASSWORD BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
-  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 readonly BASH_BIN=/bin/bash
 readonly CURL_BIN=/usr/bin/curl
 readonly ENV_BIN=/usr/bin/env
+readonly HOSTNAME_BIN=/usr/bin/hostname
+readonly MKTEMP_BIN=/usr/bin/mktemp
+readonly PYESH_BIN=/usr/bin/pvesh
 readonly PYTHON_BIN=/usr/bin/python3
 readonly SHA256SUM_BIN=/usr/bin/sha256sum
+readonly STAT_BIN=/usr/bin/stat
+readonly SYSTEMCTL_BIN=/usr/bin/systemctl
 
 # Vollständige Installation eines neuen Debian-13-LXC auf einem Proxmox-VE-Host.
 # Pflichtangaben:
@@ -54,8 +59,27 @@ if [[ "${EUID}" -ne 0 ]] || [[ ! -x /usr/sbin/pct ]]; then
   exit 1
 fi
 
+report_error() {
+  local exit_code=$?
+  local line_number="$1"
+  local command_text="$2"
+  echo "Fehler in proxmox-install-lxc.sh, Zeile $line_number: $command_text (Status $exit_code)" >&2
+  exit "$exit_code"
+}
+trap 'report_error "$LINENO" "$BASH_COMMAND"' ERR
+
+fail() {
+  echo "Fehler: $*" >&2
+  exit 1
+}
+
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-work_dir="$(mktemp -d)"
+[[ -d /root && ! -L /root ]] || fail "/root ist kein sicheres temporäres Stammverzeichnis."
+root_owner="$($STAT_BIN -Lc '%u' /root)"
+root_mode="$($STAT_BIN -Lc '%a' /root)"
+[[ "$root_owner" == "0" && $((8#$root_mode & 022)) -eq 0 ]] \
+  || fail "/root muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
+work_dir="$($MKTEMP_BIN -d -p /root .dpl2acron-lxc.XXXXXX)"
 firewall_temp=""
 container_password_file=""
 container_ca_file=""
@@ -74,18 +98,36 @@ cleanup() {
 }
 trap cleanup EXIT
 
-report_error() {
-  local exit_code=$?
-  local line_number="$1"
-  local command_text="$2"
-  echo "Fehler in proxmox-install-lxc.sh, Zeile $line_number: $command_text (Status $exit_code)" >&2
-  exit "$exit_code"
-}
-trap 'report_error "$LINENO" "$BASH_COMMAND"' ERR
+require_effective_proxmox_firewall() {
+  local cluster_options node_options node_name required_backend
+  cluster_options="$($PYESH_BIN get /cluster/firewall/options --output-format json 2>/dev/null)" \
+    || fail "Der Datacenter-Firewallstatus konnte nicht gelesen werden."
+  "$PYTHON_BIN" -I - "$cluster_options" <<'PY' \
+    || fail "Die Proxmox-Firewall ist im Datacenter nicht aktiviert. Aktivieren Sie Datacenter > Firewall > Options > Firewall."
+import json
+import sys
 
-fail() {
-  echo "Fehler: $*" >&2
-  exit 1
+value = json.loads(sys.argv[1]).get("enable")
+if value not in (1, True, "1", "true", "on", "yes"):
+    raise SystemExit(1)
+PY
+  node_name="$($HOSTNAME_BIN -s)"
+  [[ "$node_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] \
+    || fail "Der lokale Proxmox-Node konnte nicht sicher bestimmt werden."
+  node_options="$($PYESH_BIN get "/nodes/$node_name/firewall/options" --output-format json 2>/dev/null)" \
+    || fail "Die Firewalloptionen des Proxmox-Nodes $node_name konnten nicht gelesen werden."
+  required_backend="$("$PYTHON_BIN" -I - "$node_options" <<'PY'
+import json
+import sys
+
+value = json.loads(sys.argv[1]).get("nftables", 0)
+enabled = value in (1, True, "1", "true", "on", "yes")
+print("proxmox-firewall.service" if enabled else "pve-firewall.service")
+PY
+)" || fail "Die Firewalloption nftables des Proxmox-Nodes ist ungültig."
+  "$SYSTEMCTL_BIN" is-active --quiet "$required_backend" 2>/dev/null \
+    || fail "Das für den Node konfigurierte Proxmox-Firewall-Backend ist nicht aktiv: $required_backend"
+  echo "Proxmox-Firewall wirksam: Datacenter aktiviert, Backend $required_backend aktiv."
 }
 
 if [[ -z "$bundle_path" && -z "$bundle_url" && -f "$script_dir/dpl-acron-debian13.tar.gz" ]]; then
@@ -228,7 +270,7 @@ if [[ "$ct_exists" -eq 0 ]]; then
     --swap "$swap"
     --rootfs "$root_storage:$rootfs_size"
     --net0 "$network"
-    --onboot 1
+    --onboot 0
     --startup "order=30,up=20,down=30"
     --timezone host
     --tags "dpl-acron;intranet"
@@ -244,7 +286,7 @@ else
 fi
 
 echo "Konfiguriere Proxmox-Firewall ..."
-firewall_temp="$(mktemp)"
+firewall_temp="$work_dir/ct-firewall.fw"
 {
   echo "[OPTIONS]"
   echo "enable: 1"
@@ -270,6 +312,12 @@ firewall_temp="$(mktemp)"
 # /etc/pve ist pmxcfs. Ein normales Kopieren funktioniert dort, während
 # `install -m` wegen seines anschließenden chmod mit EPERM abbrechen kann.
 cp -- "$firewall_temp" "/etc/pve/firewall/$ctid.fw"
+pct set "$ctid" --onboot 0
+
+# Die CT-Regeln wirken nur bei global aktivierter Proxmox-Firewall und einem
+# laufenden Backend. Gemeinsame Hosteinstellungen werden nie automatisch
+# verändert; bei fehlender Schutzwirkung bleibt der CT gestoppt.
+require_effective_proxmox_firewall
 
 # Erst nach dem Schreiben der Allow-Regeln starten, damit es kein kurzes
 # ungeschütztes Zeitfenster mit eingehender Standardrichtlinie ACCEPT gibt.
@@ -318,6 +366,7 @@ unset admin_password
 
 health="$(pct exec "$ctid" -- python3 -c \
   'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8765/api/health", timeout=5).read().decode())')"
+pct set "$ctid" --onboot 1
 ct_ip="$(pct exec "$ctid" -- hostname -I | awk '{print $1}')"
 
 echo

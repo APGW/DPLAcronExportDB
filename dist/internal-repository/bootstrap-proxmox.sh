@@ -6,8 +6,8 @@ set -Eeuo pipefail
 # Installer ausschließlich nach erfolgreicher Prüfung des fest eingebetteten
 # SHA-256-Werts aus.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository}"
-entry_sha256="9bff1b3cef72c4e9ea98cd97131e23c4d49dd2a380055862069b833d60f3fb63"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository}"
+entry_sha256="6b7787f623f8d5242984f8d51603683ee6ad7fac828f7726281803b8b179151c"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"
@@ -17,7 +17,7 @@ for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
 builtin unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
-  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -60,7 +60,12 @@ if [[ -n "$ca_cert" ]]; then
   curl_ca_options=(--cacert "$ca_cert")
 fi
 
-work_dir="$("$MKTEMP_BIN" -d)"
+[[ -d /root && ! -L /root ]] || fail "/root ist kein sicheres temporäres Stammverzeichnis."
+root_owner="$("$STAT_BIN" -Lc '%u' /root)"
+root_mode="$("$STAT_BIN" -Lc '%a' /root)"
+[[ "$root_owner" == "0" && $((8#$root_mode & 022)) -eq 0 ]] \
+  || fail "/root muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
+work_dir="$("$MKTEMP_BIN" -d -p /root .dpl2acron-bootstrap.XXXXXX)"
 "$CHMOD_BIN" 0700 "$work_dir"
 trap '"$RM_BIN" -rf -- "$work_dir"' EXIT
 installer="$work_dir/install-proxmox.sh"

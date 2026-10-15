@@ -53,7 +53,7 @@ Platzhalter durch die freigegebene Prüfsumme aus `release.json` ersetzen:
 (
   set -Eeuo pipefail
   umask 077
-  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-bootstrap.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
@@ -86,7 +86,7 @@ folgenden Downloads angegeben:
 (
   set -Eeuo pipefail
   umask 077
-  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-bootstrap.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --cacert /usr/local/share/ca-certificates/firma.crt \
     --proto '=https' --proto-redir '=https' --tlsv1.2 --connect-timeout 10 \
@@ -123,7 +123,7 @@ danach ausgeführt:
 (
   set -Eeuo pipefail
   umask 077
-  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d)"
+  BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-http-test.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=http' --proto-redir '=http' \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
@@ -274,11 +274,23 @@ Standardrichtlinie `DROP` an. Es erlaubt:
 - `443/tcp` ausschließlich aus `WEB_CIDRS`
 - optional `22/tcp` ausschließlich aus `SSH_CIDRS`
 
-Die Firewall muss zusätzlich auf Datacenter-/Node-Ebene gemäß der vorhandenen
-Proxmox-Konfiguration aktiviert sein. Es darf weder am Internet-Router noch an
+Der Installer prüft vor dem ersten Containerstart, dass die Firewall unter
+`Datacenter > Firewall > Options` aktiviert ist und auf dem aktuellen Node
+der zur Node-Option `nftables` passende Dienst aktiv ist:
+`proxmox-firewall.service` bei aktivem nftables-Backend, andernfalls
+`pve-firewall.service`. Er
+ändert diese gemeinsam genutzten Hosteinstellungen nicht automatisch. Eine
+separate Node-Host-Firewalloption ist nur für Regeln des Proxmox-Hosts selbst
+zuständig und keine Voraussetzung für die CT-Regeln. Es darf weder am
+Internet-Router noch an
 einer vorgeschalteten Firewall eine öffentliche Weiterleitung für `443`
 oder `3306` auf diesen Container geben. VPN-Clients greifen per Routing auf die
 private CT-IP zu.
+
+Der Container wird zunächst mit deaktiviertem Autostart erstellt. Erst nach
+erfolgreicher Installation und bestandener lokaler Gesundheitsprüfung setzt der
+Installer `onboot=1`. Bei einer fehlgeschlagenen Firewallprüfung bleibt der
+Container gestoppt und startet auch nach einem Hostneustart nicht automatisch.
 
 ## Wiederverwendbare CT-Vorlage
 

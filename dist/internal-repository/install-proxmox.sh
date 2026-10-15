@@ -5,8 +5,8 @@ set -Eeuo pipefail
 # Das nachgelagerte Community-Skript wird vor der Ausführung gegen die beim
 # Release-Bau festgeschriebene SHA-256-Prüfsumme geprüft.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/main/dist/internal-repository}"
-community_sha256="dc7d5224cdc85432a869b4514971eb4ac02eadfee58a9c66d5b2563ee677d371"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository}"
+community_sha256="19adc39543abeda1673074423eb03e07fa457af8c3796a0d6e79cbeb29333cdf"
 web_cidrs="${WEB_CIDRS:-}"
 ctid="${CTID:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
@@ -19,7 +19,7 @@ for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
 builtin unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
-  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR
+  LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
@@ -133,7 +133,12 @@ if "$PCT_BIN" status "$ctid" >/dev/null 2>&1; then
   fail "CT $ctid existiert bereits. Für eine Neuinstallation eine freie CTID wählen."
 fi
 
-work_dir="$($MKTEMP_BIN -d)"
+[[ -d /root && ! -L /root ]] || fail "/root ist kein sicheres temporäres Stammverzeichnis."
+root_owner="$("$STAT_BIN" -Lc '%u' /root)"
+root_mode="$("$STAT_BIN" -Lc '%a' /root)"
+[[ "$root_owner" == "0" && $((8#$root_mode & 022)) -eq 0 ]] \
+  || fail "/root muss root gehören und darf nicht gruppen-/weltbeschreibbar sein."
+work_dir="$($MKTEMP_BIN -d -p /root .dpl2acron-entry.XXXXXX)"
 "$CHMOD_BIN" 0700 "$work_dir"
 trap '"$RM_BIN" -rf -- "$work_dir"' EXIT
 community_script="$work_dir/dpl-acron.sh"
