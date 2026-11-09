@@ -6,8 +6,8 @@ set -Eeuo pipefail
 # Installer ausschließlich nach erfolgreicher Prüfung des fest eingebetteten
 # SHA-256-Werts aus.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository}"
-entry_sha256="ee62dfdc7788a35a9f165949a50857a90ebb9359cf722e563f98ea4b22a474c4"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository}"
+entry_sha256="05ee89d6fca6f940430deb200611b60bb73f3ed1e27a7277f40491e8f00198b0"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"
@@ -20,7 +20,8 @@ for function_name in $(builtin compgen -A function); do
 done
 builtin unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
   LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
-builtin export IFS=$' \t\n'
+builtin export -n IFS
+IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 readonly BASH_BIN=/bin/bash

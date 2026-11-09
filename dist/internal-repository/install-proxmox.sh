@@ -5,8 +5,8 @@ set -Eeuo pipefail
 # Das nachgelagerte Community-Skript wird vor der Ausführung gegen die beim
 # Release-Bau festgeschriebene SHA-256-Prüfsumme geprüft.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository}"
-community_sha256="abd997c6c502ee8604188c079a143a66d670c3019c3430860407cd685bff7069"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository}"
+community_sha256="8fc52019320bff71c45325be8f906ef64399536fdbe8d16451e751bf167908fb"
 web_cidrs="${WEB_CIDRS:-}"
 ctid="${CTID:-}"
 bridge="${BRIDGE:-vmbr0}"
@@ -22,7 +22,8 @@ for function_name in $(builtin compgen -A function); do
 done
 builtin unset BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
   LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
-builtin export IFS=$' \t\n'
+builtin export -n IFS
+IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 readonly BASH_BIN=/bin/bash

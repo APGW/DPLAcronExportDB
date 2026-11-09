@@ -9,8 +9,8 @@ set -Eeuo pipefail
 # Ein versehentlich geerbtes Kennwort darf keinem Prüf-, Download- oder
 # Installationsprozess des Wrappers zugänglich sein.
 APP="dpl-acron"
-DPL_APP_VERSION="3.7.6"
-DPL_BUNDLE_SHA256="e02413042aaa72983049d7420861cb1a95453ebd62d5e1b7b3bd68a61a5dcfa4"
+DPL_APP_VERSION="3.7.7"
+DPL_BUNDLE_SHA256="d09bebd654d5cf83b8e12ffeec8bdaea57048a54221e5593a4f3a423f74f4582"
 DPL_BASE_URL="${DPL_BASE_URL:-}"
 DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
 DPL_CA_CERT="${DPL_CA_CERT:-}"
@@ -25,7 +25,8 @@ for function_name in $(builtin compgen -A function); do
 done
 builtin unset DPL_ADMIN_PASSWORD BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
   LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
-builtin export IFS=$' \t\n'
+builtin export -n IFS
+IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 readonly BASH_BIN=/bin/bash

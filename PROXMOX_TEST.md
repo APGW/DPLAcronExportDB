@@ -1,4 +1,4 @@
-# Proxmox-Abnahme für DPL2ACRON 3.7.6
+# Proxmox-Abnahme für DPL2ACRON 3.7.7
 
 Diese Abnahme ist für einen ausschließlich zu Testzwecken verwendeten,
 unprivilegierten Debian-13-LXC vorgesehen. Vor einem Upgrade einer vorhandenen
@@ -10,7 +10,7 @@ Der vollständige Ordner `dist/internal-repository` wird mit dem Repository auf
 GitHub veröffentlicht. Die Basisadresse des unveränderlichen Release-Tags lautet:
 
 ```text
-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository
+https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository
 ```
 
 SHA-256-Wert des Einstiegsskripts muss aus einer vertrauenswürdigen Quelle
@@ -25,7 +25,7 @@ Testumgebung anpassen:
 (
   set -Eeuo pipefail
   umask 077
-  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository"
+  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository"
   BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-bootstrap.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
@@ -55,7 +55,7 @@ MariaDB-Datenbank angelegt und anschließend entfernt.
 (
   set -Eeuo pipefail
   umask 077
-  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository"
+  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository"
   BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-acceptance.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
@@ -65,7 +65,7 @@ MariaDB-Datenbank angelegt und anschließend entfernt.
   printf '%s  %s\n' 'ABNAHMESKRIPT_SHA256' "$BOOTSTRAP_DIR/proxmox-acceptance.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-    CTID=100 EXPECTED_VERSION=3.7.6 EXPECTED_VLAN_TAG=100 \
+    CTID=100 EXPECTED_VERSION=3.7.7 EXPECTED_VLAN_TAG=100 \
     /bin/bash --noprofile --norc -p "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
 )
 ```
@@ -75,7 +75,7 @@ Geprüft werden:
 - Debian 13 und unprivilegierter Container
 - global aktivierte Proxmox-Firewall, passendes Node-Backend und eingehende CT-Standardrichtlinie `DROP`
 - aktive und aktivierte Dienste
-- installierte Version 3.7.6 und erwartetes VLAN
+- installierte Version 3.7.7 und erwartetes VLAN
 - HTTPS und Zertifikatskette
 - Port 8765 ausschließlich auf Loopback und kein externes MariaDB-Listening
 - root-kontrollierte Konfigurationsdateien und sichere Cookies
@@ -109,7 +109,7 @@ vzdump 100 --mode snapshot --compress zstd
 pct exec 100 -- python3 /opt/dpl-acron/app.py --version
 ```
 
-Anschließend das geprüfte 3.7.6-Einstiegsskript in den Container kopieren und
+Anschließend das geprüfte 3.7.7-Einstiegsskript in den Container kopieren und
 ausführen. Die bei der Erstinstallation gespeicherte Datei
 `/etc/dpl-acron/update.env` liefert die interne Repository-Adresse:
 
@@ -117,7 +117,7 @@ ausführen. Die bei der Erstinstallation gespeicherte Datei
 (
   set -Eeuo pipefail
   umask 077
-  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository"
+  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository"
   BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-upgrade.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
@@ -136,7 +136,7 @@ ausführen. Die bei der Erstinstallation gespeicherte Datei
   /usr/sbin/pct exec 100 -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     /bin/bash --noprofile --norc -p /root/dpl-acron-update.sh
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-    CTID=100 EXPECTED_VERSION=3.7.6 EXPECTED_VLAN_TAG=100 \
+    CTID=100 EXPECTED_VERSION=3.7.7 EXPECTED_VLAN_TAG=100 \
     /bin/bash --noprofile --norc -p "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
 )
 ```

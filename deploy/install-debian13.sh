@@ -10,7 +10,8 @@ for function_name in $(builtin compgen -A function); do
 done
 builtin unset DPL_ADMIN_PASSWORD BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
   LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
-builtin export IFS=$' \t\n'
+builtin export -n IFS
+IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 readonly PYTHON_BIN=/usr/bin/python3
 

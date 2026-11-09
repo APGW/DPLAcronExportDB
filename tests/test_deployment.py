@@ -305,7 +305,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.7.6", guide)
+        self.assertIn("EXPECTED_VERSION=3.7.7", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -379,7 +379,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)
@@ -440,6 +440,9 @@ class DebianDeploymentTest(unittest.TestCase):
                 self.assertIn("PYTHONPATH PYTHONHOME PYTHONSTARTUP", content)
                 self.assertIn("PATH=/usr/sbin:/usr/bin:/sbin:/bin", content)
                 self.assertIn("TMPDIR", content)
+                self.assertNotIn("export IFS", content)
+                self.assertIn("export -n IFS", content)
+                self.assertIn("IFS=$' \\t\\n'", content)
         entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
         community = (ROOT / "deploy" / "community-ct.sh").read_text(encoding="utf-8")
         debian = (ROOT / "deploy" / "install-debian13.sh").read_text(encoding="utf-8")
