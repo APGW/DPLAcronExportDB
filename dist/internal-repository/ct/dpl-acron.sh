@@ -9,8 +9,8 @@ set -Eeuo pipefail
 # Ein versehentlich geerbtes Kennwort darf keinem Prüf-, Download- oder
 # Installationsprozess des Wrappers zugänglich sein.
 APP="dpl-acron"
-DPL_APP_VERSION="3.7.5"
-DPL_BUNDLE_SHA256="3407186cab499de1cee14eeb7e70c016ec01ebeff417c64b63362e1389ea7546"
+DPL_APP_VERSION="3.7.6"
+DPL_BUNDLE_SHA256="e02413042aaa72983049d7420861cb1a95453ebd62d5e1b7b3bd68a61a5dcfa4"
 DPL_BASE_URL="${DPL_BASE_URL:-}"
 DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
 DPL_CA_CERT="${DPL_CA_CERT:-}"
@@ -163,7 +163,7 @@ if [[ "$update_mode" -eq 1 ]]; then
   "$ENV_BIN" -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     "DPL_UPDATE_BASE_URL=$DPL_BASE_URL" "DPL_UPDATE_ALLOW_HTTP=$DPL_ALLOW_HTTP" \
     "DPL_UPDATE_CA_CERT_SOURCE=$DPL_CA_CERT" \
-    "$BASH_BIN" -p --noprofile --norc "$source_dir/deploy/install-debian13.sh"
+    "$BASH_BIN" --noprofile --norc -p "$source_dir/deploy/install-debian13.sh"
   exit
 fi
 
@@ -182,4 +182,4 @@ fi
 if [[ -n "${TERM:-}" ]]; then
   clean_environment+=("TERM=$TERM")
 fi
-"${clean_environment[@]}" "$BASH_BIN" -p --noprofile --norc "$installer"
+"${clean_environment[@]}" "$BASH_BIN" --noprofile --norc -p "$installer"

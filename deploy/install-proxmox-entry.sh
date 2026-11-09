@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # Das nachgelagerte Community-Skript wird vor der Ausführung gegen die beim
 # Release-Bau festgeschriebene SHA-256-Prüfsumme geprüft.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.5/dist/internal-repository}"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository}"
 community_sha256="@@COMMUNITY_SHA256@@"
 web_cidrs="${WEB_CIDRS:-}"
 ctid="${CTID:-}"
@@ -176,4 +176,4 @@ fi
 if [[ -n "${TERM:-}" ]]; then
   clean_environment+=("TERM=$TERM")
 fi
-"${clean_environment[@]}" "$BASH_BIN" -p --noprofile --norc "$community_script"
+"${clean_environment[@]}" "$BASH_BIN" --noprofile --norc -p "$community_script"

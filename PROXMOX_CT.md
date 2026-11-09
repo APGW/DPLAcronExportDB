@@ -65,7 +65,7 @@ Platzhalter durch die freigegebene Prüfsumme aus `release.json` ersetzen:
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
     WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-    /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
+    /bin/bash --noprofile --norc -p "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
 )
 ```
 
@@ -99,7 +99,7 @@ folgenden Downloads angegeben:
     DPL_BASE_URL="https://software.intern/dpl-acron" \
     DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
     WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
-    /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
+    /bin/bash --noprofile --norc -p "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
 )
 ```
 
@@ -134,7 +134,7 @@ danach ausgeführt:
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \
     WEB_CIDRS="IHR-LAN/CIDR,IHR-VPN/CIDR" \
-    /bin/bash -p --noprofile --norc "$BOOTSTRAP_DIR/dpl-acron.sh"
+    /bin/bash --noprofile --norc -p "$BOOTSTRAP_DIR/dpl-acron.sh"
 )
 ```
 
@@ -164,7 +164,7 @@ chmod 700 /root/proxmox-install-lxc.sh
 /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
   CTID=3072 WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
   SSH_CIDRS="192.168.133.0/24" SSH_PUBLIC_KEYS="/root/.ssh/authorized_keys" \
-  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
+  /bin/bash --noprofile --norc -p /root/proxmox-install-lxc.sh
 ```
 
 Das Skript fragt das Administratorkennwort verdeckt ab und überträgt es nur für
@@ -187,7 +187,7 @@ statische IP und abweichende Speicher lassen sich so setzen:
   CTID=3072 CT_HOSTNAME=dpl-acron ROOT_STORAGE=local-lvm TEMPLATE_STORAGE=local \
   BRIDGE=vmbr0 IP_CONFIG=192.168.133.130/24 GATEWAY=192.168.133.2 \
   WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" SSH_CIDRS="192.168.133.0/24" \
-  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
+  /bin/bash --noprofile --norc -p /root/proxmox-install-lxc.sh
 ```
 
 Für VLAN 100 muss die gewählte Linux-Bridge VLAN-aware sein und der physische
@@ -198,7 +198,7 @@ Bridge `vmbr0` wird der Tag bereits während der CT-Erstellung gesetzt:
 /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
   CTID=3072 BRIDGE=vmbr0 VLAN_TAG=100 \
   WEB_CIDRS="192.168.100.0/24,10.250.0.0/24" \
-  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
+  /bin/bash --noprofile --norc -p /root/proxmox-install-lxc.sh
 ```
 
 Der Installer akzeptiert VLAN-IDs von 1 bis 4094 und bricht ab, wenn die Bridge
@@ -215,7 +215,7 @@ Die erwartete Prüfsumme muss dabei ausdrücklich angegeben werden:
   BUNDLE_URL="https://software.intern/dpl-acron-debian13.tar.gz" \
   BUNDLE_SHA256="HIER_64_HEX_ZEICHEN_EINTRAGEN" \
   DPL_CA_CERT="/usr/local/share/ca-certificates/firma.crt" \
-  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
+  /bin/bash --noprofile --norc -p /root/proxmox-install-lxc.sh
 ```
 
 `DPL_CA_CERT` ist nur bei einer privaten Zertifizierungsstelle erforderlich.

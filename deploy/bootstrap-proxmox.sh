@@ -104,4 +104,4 @@ if [[ -n "${TERM:-}" ]]; then
   clean_environment+=("TERM=$TERM")
 fi
 
-"${clean_environment[@]}" "$BASH_BIN" -p --noprofile --norc "$installer"
+"${clean_environment[@]}" "$BASH_BIN" --noprofile --norc -p "$installer"

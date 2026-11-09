@@ -95,7 +95,7 @@ msg_info "Installiere Anwendung, Datenbank und Dienste"
 /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
   "DPL_UPDATE_BASE_URL=$DPL_BASE_URL" "DPL_UPDATE_ALLOW_HTTP=${DPL_ALLOW_HTTP:-0}" \
   "DPL_UPDATE_CA_CERT_SOURCE=${DPL_CA_CERT:-}" \
-  "$BASH_BIN" -p --noprofile --norc "$release_dir/source/deploy/install-debian13.sh"
+  "$BASH_BIN" --noprofile --norc -p "$release_dir/source/deploy/install-debian13.sh"
 systemctl is-active --quiet dpl-acron.service
 systemctl is-enabled --quiet dpl-acron-backup.timer
 python3 -c 'import urllib.request; urllib.request.urlopen("http://127.0.0.1:8765/api/health", timeout=5).read()'

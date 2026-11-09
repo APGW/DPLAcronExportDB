@@ -163,7 +163,7 @@ if [[ "$update_mode" -eq 1 ]]; then
   "$ENV_BIN" -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     "DPL_UPDATE_BASE_URL=$DPL_BASE_URL" "DPL_UPDATE_ALLOW_HTTP=$DPL_ALLOW_HTTP" \
     "DPL_UPDATE_CA_CERT_SOURCE=$DPL_CA_CERT" \
-    "$BASH_BIN" -p --noprofile --norc "$source_dir/deploy/install-debian13.sh"
+    "$BASH_BIN" --noprofile --norc -p "$source_dir/deploy/install-debian13.sh"
   exit
 fi
 
@@ -182,4 +182,4 @@ fi
 if [[ -n "${TERM:-}" ]]; then
   clean_environment+=("TERM=$TERM")
 fi
-"${clean_environment[@]}" "$BASH_BIN" -p --noprofile --norc "$installer"
+"${clean_environment[@]}" "$BASH_BIN" --noprofile --norc -p "$installer"

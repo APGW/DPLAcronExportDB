@@ -305,7 +305,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.7.5", guide)
+        self.assertIn("EXPECTED_VERSION=3.7.6", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -318,10 +318,10 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertNotIn('exec bash "$installer"', template)
         self.assertNotIn('exec bash "$source_dir/deploy/install-debian13.sh"', template)
         self.assertIn('"$ENV_BIN" -i', template)
-        self.assertIn('"$BASH_BIN" -p --noprofile --norc', template)
+        self.assertIn('"$BASH_BIN" --noprofile --norc -p', template)
         self.assertIn("update_mode=1", template)
         self.assertIn('chmod 0700 "$work_dir"', template)
-        self.assertLess(template.index('"$SHA256SUM_BIN" --check --status'), template.index('"$BASH_BIN" -p --noprofile --norc "$installer"'))
+        self.assertLess(template.index('"$SHA256SUM_BIN" --check --status'), template.index('"$BASH_BIN" --noprofile --norc -p "$installer"'))
         self.assertIn("unset DPL_ADMIN_PASSWORD", template)
         self.assertNotIn("export DPL_ADMIN_PASSWORD", template)
         self.assertLess(template.index("unset DPL_ADMIN_PASSWORD"), template.index("update_mode=0"))
@@ -347,6 +347,25 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('architectures = @("amd64")', builder)
         self.assertIn('"release.json"', builder)
 
+    def test_privileged_bash_invocations_put_long_options_before_short_options(self) -> None:
+        paths = (
+            "DEPLOY_DEBIAN13.md",
+            "PROXMOX_CT.md",
+            "PROXMOX_TEST.md",
+            "deploy/bootstrap-proxmox.sh",
+            "deploy/community-ct.sh",
+            "deploy/community-install.sh",
+            "deploy/install-proxmox-entry.sh",
+            "deploy/proxmox-acceptance.sh",
+            "deploy/proxmox-install-lxc.sh",
+        )
+        for relative_path in paths:
+            content = (ROOT / relative_path).read_text(encoding="utf-8")
+            with self.subTest(path=relative_path):
+                self.assertNotIn("-p --noprofile", content)
+                if "--noprofile" in content:
+                    self.assertIn("--noprofile --norc -p", content)
+
     def test_forwardable_installer_is_published_and_verifies_the_entrypoint(self) -> None:
         builder = (ROOT / "deploy" / "build-internal-repository.ps1").read_text(encoding="utf-8")
         entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
@@ -360,7 +379,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.5/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)

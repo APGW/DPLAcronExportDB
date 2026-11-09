@@ -46,7 +46,7 @@ Auf Debian installieren:
   /usr/bin/tar -xzf /tmp/dpl-acron-debian13.tar.gz -C "$INSTALL_DIR"
   cd "$INSTALL_DIR"
   sudo /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
-    /bin/bash -p --noprofile --norc deploy/install-debian13.sh
+    /bin/bash --noprofile --norc -p deploy/install-debian13.sh
 )
 ```
 

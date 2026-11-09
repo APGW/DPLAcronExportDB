@@ -6,8 +6,8 @@ set -Eeuo pipefail
 # Installer ausschließlich nach erfolgreicher Prüfung des fest eingebetteten
 # SHA-256-Werts aus.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.5/dist/internal-repository}"
-entry_sha256="0866cde943b1d4cc3fb14249352bc011b5bea2597efb3aac5d2bdecc608095cf"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.6/dist/internal-repository}"
+entry_sha256="ee62dfdc7788a35a9f165949a50857a90ebb9359cf722e563f98ea4b22a474c4"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"
@@ -104,4 +104,4 @@ if [[ -n "${TERM:-}" ]]; then
   clean_environment+=("TERM=$TERM")
 fi
 
-"${clean_environment[@]}" "$BASH_BIN" -p --noprofile --norc "$installer"
+"${clean_environment[@]}" "$BASH_BIN" --noprofile --norc -p "$installer"

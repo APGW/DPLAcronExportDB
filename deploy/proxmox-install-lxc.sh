@@ -51,10 +51,10 @@ readonly SYSTEMCTL_BIN=/usr/bin/systemctl
 # Pflichtangaben:
 #   /usr/bin/env -i PATH=/usr/sbin:/usr/bin:/sbin:/bin CTID=3072 \
 #   WEB_CIDRS="192.168.133.0/24,10.20.0.0/16" \
-#   /bin/bash -p --noprofile --norc proxmox-install-lxc.sh
+#   /bin/bash --noprofile --norc -p proxmox-install-lxc.sh
 # Alternativ zum lokalen Archiv:
 #   BUNDLE_URL=https://intern.example/dpl-acron-debian13.tar.gz \
-#   BUNDLE_SHA256=<64-zeichen> ... /bin/bash -p --noprofile --norc proxmox-install-lxc.sh
+#   BUNDLE_SHA256=<64-zeichen> ... /bin/bash --noprofile --norc -p proxmox-install-lxc.sh
 
 if [[ "${EUID}" -ne 0 ]] || [[ ! -x /usr/sbin/pct ]]; then
   echo "Dieses Skript muss als root auf einem Proxmox-VE-Host laufen." >&2
@@ -373,8 +373,8 @@ pct exec "$ctid" -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bi
   "DPL_UPDATE_ALLOW_HTTP=$update_allow_http" \
   "DPL_UPDATE_CA_CERT_SOURCE=$container_ca_file" \
   "DPL_ADMIN_PASSWORD_FILE=$container_password_file" \
-  /bin/bash -p --noprofile --norc -c \
-  'set -Eeuo pipefail; export DPL_ADMIN_PASSWORD="$(/usr/bin/cat -- "$DPL_ADMIN_PASSWORD_FILE")"; /bin/rm -f -- "$DPL_ADMIN_PASSWORD_FILE"; unset DPL_ADMIN_PASSWORD_FILE; exec /bin/bash -p --noprofile --norc /root/dpl-acron-release/deploy/install-debian13.sh'
+  /bin/bash --noprofile --norc -p -c \
+  'set -Eeuo pipefail; export DPL_ADMIN_PASSWORD="$(/usr/bin/cat -- "$DPL_ADMIN_PASSWORD_FILE")"; /bin/rm -f -- "$DPL_ADMIN_PASSWORD_FILE"; unset DPL_ADMIN_PASSWORD_FILE; exec /bin/bash --noprofile --norc -p /root/dpl-acron-release/deploy/install-debian13.sh'
 unset admin_password
 
 health="$(pct exec "$ctid" -- python3 -c \
