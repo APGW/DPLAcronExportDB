@@ -5,10 +5,12 @@ set -Eeuo pipefail
 # Das nachgelagerte Community-Skript wird vor der Ausführung gegen die beim
 # Release-Bau festgeschriebene SHA-256-Prüfsumme geprüft.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository}"
-community_sha256="19adc39543abeda1673074423eb03e07fa457af8c3796a0d6e79cbeb29333cdf"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.5/dist/internal-repository}"
+community_sha256="149b001611f19d6f7162b5f586a09445680f24256d9c379e6365f26d8c2cc50b"
 web_cidrs="${WEB_CIDRS:-}"
 ctid="${CTID:-}"
+bridge="${BRIDGE:-vmbr0}"
+vlan_tag="${VLAN_TAG:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 ca_cert="${DPL_CA_CERT:-}"
 
@@ -92,6 +94,11 @@ fi
 
 [[ "$allow_public_cidrs" == "0" || "$allow_public_cidrs" == "1" ]] \
   || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
+[[ "$bridge" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,14}$ ]] || fail "BRIDGE ist ungültig."
+if [[ -n "$vlan_tag" ]]; then
+  [[ "$vlan_tag" =~ ^[0-9]+$ ]] && (( vlan_tag >= 1 && vlan_tag <= 4094 )) \
+    || fail "VLAN_TAG muss zwischen 1 und 4094 liegen."
+fi
 web_cidrs="$("$PYTHON_BIN" -I - "$web_cidrs" "$allow_public_cidrs" <<'PY'
 import ipaddress
 import sys
@@ -159,6 +166,8 @@ clean_environment=(
   "DPL_BASE_URL=$base_url"
   "CTID=$ctid"
   "WEB_CIDRS=$web_cidrs"
+  "BRIDGE=$bridge"
+  "VLAN_TAG=$vlan_tag"
   "DPL_ALLOW_PUBLIC_CIDRS=$allow_public_cidrs"
 )
 if [[ -n "$ca_cert" ]]; then

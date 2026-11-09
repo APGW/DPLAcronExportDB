@@ -190,6 +190,22 @@ statische IP und abweichende Speicher lassen sich so setzen:
   /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
 ```
 
+Für VLAN 100 muss die gewählte Linux-Bridge VLAN-aware sein und der physische
+Switchport VLAN 100 getaggt transportieren. Bei der empfohlenen VLAN-aware
+Bridge `vmbr0` wird der Tag bereits während der CT-Erstellung gesetzt:
+
+```bash
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  CTID=3072 BRIDGE=vmbr0 VLAN_TAG=100 \
+  WEB_CIDRS="192.168.100.0/24,10.250.0.0/24" \
+  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
+```
+
+Der Installer akzeptiert VLAN-IDs von 1 bis 4094 und bricht ab, wenn die Bridge
+nicht existiert oder zur Laufzeit kein VLAN-Filtering aktiviert ist. DHCP-Relay,
+DHCP-Server, Gateway und Routing für VLAN 100 werden nicht vom Installer
+eingerichtet und müssen im Netzwerk bereits vorhanden sein.
+
 Das Release kann alternativ von einer internen HTTPS-Adresse geladen werden.
 Die erwartete Prüfsumme muss dabei ausdrücklich angegeben werden:
 

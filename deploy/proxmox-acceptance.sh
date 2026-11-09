@@ -3,10 +3,11 @@ set -Eeuo pipefail
 
 # Nicht-destruktive Abnahme einer installierten DPL2ACRON-Testinstanz.
 # Ausführung auf dem Proxmox-VE-Host:
-#   CTID=100 EXPECTED_VERSION=3.7.4 /bin/bash -p --noprofile --norc proxmox-acceptance.sh
+#   CTID=100 EXPECTED_VERSION=3.7.5 EXPECTED_VLAN_TAG=100 /bin/bash -p --noprofile --norc proxmox-acceptance.sh
 
 ctid="${CTID:-}"
-expected_version="${EXPECTED_VERSION:-3.7.4}"
+expected_version="${EXPECTED_VERSION:-3.7.5}"
+expected_vlan_tag="${EXPECTED_VLAN_TAG:-}"
 checks=0
 temporary_dir=""
 restore_database=""
@@ -69,10 +70,18 @@ command -v curl >/dev/null 2>&1 || fail "curl wurde nicht gefunden."
 command -v pvesh >/dev/null 2>&1 || fail "pvesh wurde nicht gefunden."
 [[ "$ctid" =~ ^[1-9][0-9]{2,8}$ ]] || fail "CTID muss eine gültige Proxmox-ID sein."
 [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "EXPECTED_VERSION ist ungültig."
+if [[ -n "$expected_vlan_tag" ]]; then
+  [[ "$expected_vlan_tag" =~ ^[0-9]+$ ]] && (( expected_vlan_tag >= 1 && expected_vlan_tag <= 4094 )) \
+    || fail "EXPECTED_VLAN_TAG ist ungültig."
+fi
 
 config="$(pct config "$ctid")" || fail "CT $ctid wurde nicht gefunden."
 grep -Fqx 'unprivileged: 1' <<< "$config" || fail "CT $ctid ist nicht unprivilegiert."
 grep -Eq '^net0: .*firewall=1' <<< "$config" || fail "Die CT-Netzwerkschnittstelle verwendet nicht die Proxmox-Firewall."
+if [[ -n "$expected_vlan_tag" ]]; then
+  grep -Eq "^net0: .*tag=$expected_vlan_tag([,[:space:]]|$)" <<< "$config" \
+    || fail "Die CT-Netzwerkschnittstelle verwendet nicht VLAN $expected_vlan_tag."
+fi
 require_effective_proxmox_firewall
 pass "Unprivilegierter CT und wirksame Proxmox-Firewall"
 

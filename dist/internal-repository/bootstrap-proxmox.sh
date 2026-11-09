@@ -6,11 +6,13 @@ set -Eeuo pipefail
 # Installer ausschließlich nach erfolgreicher Prüfung des fest eingebetteten
 # SHA-256-Werts aus.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.4/dist/internal-repository}"
-entry_sha256="6b7787f623f8d5242984f8d51603683ee6ad7fac828f7726281803b8b179151c"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.5/dist/internal-repository}"
+entry_sha256="0866cde943b1d4cc3fb14249352bc011b5bea2597efb3aac5d2bdecc608095cf"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"
+bridge="${BRIDGE:-}"
+vlan_tag="${VLAN_TAG:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 
 for function_name in $(builtin compgen -A function); do
@@ -88,6 +90,12 @@ if [[ -n "$ctid" ]]; then
 fi
 if [[ -n "$web_cidrs" ]]; then
   clean_environment+=("WEB_CIDRS=$web_cidrs")
+fi
+if [[ -n "$bridge" ]]; then
+  clean_environment+=("BRIDGE=$bridge")
+fi
+if [[ -n "$vlan_tag" ]]; then
+  clean_environment+=("VLAN_TAG=$vlan_tag")
 fi
 if [[ -n "$ca_cert" ]]; then
   clean_environment+=("DPL_CA_CERT=$ca_cert")

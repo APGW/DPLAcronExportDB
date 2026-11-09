@@ -16,6 +16,8 @@ DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
 DPL_CA_CERT="${DPL_CA_CERT:-}"
 WEB_CIDRS="${WEB_CIDRS:-}"
 CTID="${CTID:-}"
+BRIDGE="${BRIDGE:-vmbr0}"
+VLAN_TAG="${VLAN_TAG:-}"
 DPL_ALLOW_PUBLIC_CIDRS="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 
 for function_name in $(builtin compgen -A function); do
@@ -74,6 +76,11 @@ if [[ "$update_mode" -eq 0 ]]; then
 fi
 [[ "$DPL_ALLOW_PUBLIC_CIDRS" == "0" || "$DPL_ALLOW_PUBLIC_CIDRS" == "1" ]] \
   || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
+[[ "$BRIDGE" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,14}$ ]] || fail "BRIDGE ist ungültig."
+if [[ -n "$VLAN_TAG" ]]; then
+  [[ "$VLAN_TAG" =~ ^[0-9]+$ ]] && (( VLAN_TAG >= 1 && VLAN_TAG <= 4094 )) \
+    || fail "VLAN_TAG muss zwischen 1 und 4094 liegen."
+fi
 curl_ca_options=()
 if [[ -n "$DPL_CA_CERT" ]]; then
   [[ "$DPL_CA_CERT" == /* && -f "$DPL_CA_CERT" && ! -L "$DPL_CA_CERT" ]] \
@@ -164,6 +171,7 @@ CTID="${CTID:-$($PYESH_BIN get /cluster/nextid 2>/dev/null)}"
 clean_environment=(
   "$ENV_BIN" -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin
   "CTID=$CTID" "WEB_CIDRS=$WEB_CIDRS"
+  "BRIDGE=$BRIDGE" "VLAN_TAG=$VLAN_TAG"
   "DPL_ALLOW_PUBLIC_CIDRS=$DPL_ALLOW_PUBLIC_CIDRS"
   "DPL_UPDATE_BASE_URL=$DPL_BASE_URL" "DPL_UPDATE_ALLOW_HTTP=$DPL_ALLOW_HTTP"
   "BUNDLE_PATH=$bundle" "BUNDLE_SHA256=$DPL_BUNDLE_SHA256"

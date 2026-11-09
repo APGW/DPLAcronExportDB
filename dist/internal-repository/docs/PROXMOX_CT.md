@@ -60,7 +60,7 @@ Platzhalter durch die freigegebene Prüfsumme aus `release.json` ersetzen:
     --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' '7cf846a79b2d73b5b52f266c6f566be3e003d042c5ec4c337e73eb866c802f14' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' '77abd0f2fc4422ab801fcbd64a4a5871c52610069699a0920ac164041fbd129f' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -93,7 +93,7 @@ folgenden Downloads angegeben:
     --max-time 60 --speed-limit 1024 --speed-time 15 --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' '7cf846a79b2d73b5b52f266c6f566be3e003d042c5ec4c337e73eb866c802f14' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' '77abd0f2fc4422ab801fcbd64a4a5871c52610069699a0920ac164041fbd129f' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -129,7 +129,7 @@ danach ausgeführt:
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS \
     http://WINDOWS-IP:8088/ct/dpl-acron.sh -o "$BOOTSTRAP_DIR/dpl-acron.sh"
-  printf '%s  %s\n' '19adc39543abeda1673074423eb03e07fa457af8c3796a0d6e79cbeb29333cdf' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
+  printf '%s  %s\n' '149b001611f19d6f7162b5f586a09445680f24256d9c379e6365f26d8c2cc50b' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \
@@ -189,6 +189,22 @@ statische IP und abweichende Speicher lassen sich so setzen:
   WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" SSH_CIDRS="192.168.133.0/24" \
   /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
 ```
+
+Für VLAN 100 muss die gewählte Linux-Bridge VLAN-aware sein und der physische
+Switchport VLAN 100 getaggt transportieren. Bei der empfohlenen VLAN-aware
+Bridge `vmbr0` wird der Tag bereits während der CT-Erstellung gesetzt:
+
+```bash
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  CTID=3072 BRIDGE=vmbr0 VLAN_TAG=100 \
+  WEB_CIDRS="192.168.100.0/24,10.250.0.0/24" \
+  /bin/bash -p --noprofile --norc /root/proxmox-install-lxc.sh
+```
+
+Der Installer akzeptiert VLAN-IDs von 1 bis 4094 und bricht ab, wenn die Bridge
+nicht existiert oder zur Laufzeit kein VLAN-Filtering aktiviert ist. DHCP-Relay,
+DHCP-Server, Gateway und Routing für VLAN 100 werden nicht vom Installer
+eingerichtet und müssen im Netzwerk bereits vorhanden sein.
 
 Das Release kann alternativ von einer internen HTTPS-Adresse geladen werden.
 Die erwartete Prüfsumme muss dabei ausdrücklich angegeben werden:

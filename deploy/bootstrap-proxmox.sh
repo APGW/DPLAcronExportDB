@@ -11,6 +11,8 @@ entry_sha256="@@ENTRY_SHA256@@"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"
+bridge="${BRIDGE:-}"
+vlan_tag="${VLAN_TAG:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 
 for function_name in $(builtin compgen -A function); do
@@ -88,6 +90,12 @@ if [[ -n "$ctid" ]]; then
 fi
 if [[ -n "$web_cidrs" ]]; then
   clean_environment+=("WEB_CIDRS=$web_cidrs")
+fi
+if [[ -n "$bridge" ]]; then
+  clean_environment+=("BRIDGE=$bridge")
+fi
+if [[ -n "$vlan_tag" ]]; then
+  clean_environment+=("VLAN_TAG=$vlan_tag")
 fi
 if [[ -n "$ca_cert" ]]; then
   clean_environment+=("DPL_CA_CERT=$ca_cert")

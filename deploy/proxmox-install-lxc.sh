@@ -7,6 +7,7 @@ ct_hostname="${CT_HOSTNAME:-dpl-acron}"
 root_storage="${ROOT_STORAGE:-local-lvm}"
 template_storage="${TEMPLATE_STORAGE:-local}"
 bridge="${BRIDGE:-vmbr0}"
+vlan_tag="${VLAN_TAG:-}"
 ip_config="${IP_CONFIG:-dhcp}"
 gateway="${GATEWAY:-}"
 web_cidrs="${WEB_CIDRS:-}"
@@ -38,6 +39,7 @@ readonly BASH_BIN=/bin/bash
 readonly CURL_BIN=/usr/bin/curl
 readonly ENV_BIN=/usr/bin/env
 readonly HOSTNAME_BIN=/usr/bin/hostname
+readonly IP_BIN=/usr/sbin/ip
 readonly MKTEMP_BIN=/usr/bin/mktemp
 readonly PYESH_BIN=/usr/bin/pvesh
 readonly PYTHON_BIN=/usr/bin/python3
@@ -136,6 +138,14 @@ fi
 
 [[ "$ctid" =~ ^[1-9][0-9]{2,8}$ ]] || fail "CTID muss gesetzt und eine gültige Proxmox-ID sein."
 [[ -n "$web_cidrs" ]] || fail "WEB_CIDRS muss die erlaubten LAN-/VPN-Netze enthalten."
+[[ "$bridge" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,14}$ ]] || fail "BRIDGE ist ungültig."
+"$IP_BIN" link show dev "$bridge" >/dev/null 2>&1 || fail "Proxmox-Bridge $bridge wurde nicht gefunden."
+if [[ -n "$vlan_tag" ]]; then
+  [[ "$vlan_tag" =~ ^[0-9]+$ ]] && (( vlan_tag >= 1 && vlan_tag <= 4094 )) \
+    || fail "VLAN_TAG muss zwischen 1 und 4094 liegen."
+  "$IP_BIN" -d link show dev "$bridge" | grep -Eq 'vlan_filtering[[:space:]]+1' \
+    || fail "Bridge $bridge ist nicht VLAN-aware; VLAN $vlan_tag kann nicht sicher verwendet werden."
+fi
 [[ "$allow_public_cidrs" == "0" || "$allow_public_cidrs" == "1" ]] \
   || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
 if [[ -z "$admin_password" ]]; then
@@ -257,6 +267,9 @@ if [[ "$ct_exists" -eq 0 ]]; then
   fi
 
   network="name=eth0,bridge=$bridge,ip=$ip_config,firewall=1"
+  if [[ -n "$vlan_tag" ]]; then
+    network="$network,tag=$vlan_tag"
+  fi
   if [[ -n "$gateway" ]]; then
     network="$network,gw=$gateway"
   fi
