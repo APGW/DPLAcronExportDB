@@ -5,7 +5,7 @@ einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemei
 Korrektur bereit und erzeugt getrennte ACRON- und
 WINCC60-Provider-Exporte.
 
-## Version 3.7.8
+## Version 3.7.9
 
 - prüft eine DPL vor der Übernahme und zeigt neue, geänderte sowie entfallene Datensätze an
 - bewahrt vorherige Projektversionen schreibgeschützt und auswählbar auf

@@ -14,6 +14,7 @@ web_cidrs="${WEB_CIDRS:-}"
 bridge="${BRIDGE:-}"
 vlan_tag="${VLAN_TAG:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
+resume_existing="${RESUME_EXISTING:-0}"
 
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
@@ -85,6 +86,7 @@ clean_environment=(
   "$ENV_BIN" -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin
   "DPL_BASE_URL=$base_url"
   "DPL_ALLOW_PUBLIC_CIDRS=$allow_public_cidrs"
+  "RESUME_EXISTING=$resume_existing"
 )
 if [[ -n "$ctid" ]]; then
   clean_environment+=("CTID=$ctid")

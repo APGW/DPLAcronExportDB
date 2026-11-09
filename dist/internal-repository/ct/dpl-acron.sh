@@ -9,8 +9,8 @@ set -Eeuo pipefail
 # Ein versehentlich geerbtes Kennwort darf keinem Prüf-, Download- oder
 # Installationsprozess des Wrappers zugänglich sein.
 APP="dpl-acron"
-DPL_APP_VERSION="3.7.8"
-DPL_BUNDLE_SHA256="929662ba624c82bdbc49be38c7a2fd5f850f7d431972dbdedade8c43ac314663"
+DPL_APP_VERSION="3.7.9"
+DPL_BUNDLE_SHA256="2a0a9067dd390a07cec8021bf604762aca67f715d4ec4e74055571996d1fb656"
 DPL_BASE_URL="${DPL_BASE_URL:-}"
 DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
 DPL_CA_CERT="${DPL_CA_CERT:-}"
@@ -19,6 +19,7 @@ CTID="${CTID:-}"
 BRIDGE="${BRIDGE:-vmbr0}"
 VLAN_TAG="${VLAN_TAG:-}"
 DPL_ALLOW_PUBLIC_CIDRS="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
+RESUME_EXISTING="${RESUME_EXISTING:-0}"
 
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
@@ -73,6 +74,8 @@ fi
 [[ "$DPL_BASE_URL" == https://* || "$DPL_BASE_URL" == http://* ]] \
   || fail "DPL_BASE_URL muss mit https:// oder http:// beginnen."
 if [[ "$update_mode" -eq 0 ]]; then
+  [[ "$RESUME_EXISTING" == "0" || "$RESUME_EXISTING" == "1" ]] \
+    || fail "RESUME_EXISTING muss 0 oder 1 sein."
   [[ -n "$WEB_CIDRS" ]] || fail "WEB_CIDRS muss die erlaubten Intranet-/VPN-Netze enthalten."
 fi
 [[ "$DPL_ALLOW_PUBLIC_CIDRS" == "0" || "$DPL_ALLOW_PUBLIC_CIDRS" == "1" ]] \
@@ -174,6 +177,7 @@ clean_environment=(
   "CTID=$CTID" "WEB_CIDRS=$WEB_CIDRS"
   "BRIDGE=$BRIDGE" "VLAN_TAG=$VLAN_TAG"
   "DPL_ALLOW_PUBLIC_CIDRS=$DPL_ALLOW_PUBLIC_CIDRS"
+  "RESUME_EXISTING=$RESUME_EXISTING"
   "DPL_UPDATE_BASE_URL=$DPL_BASE_URL" "DPL_UPDATE_ALLOW_HTTP=$DPL_ALLOW_HTTP"
   "BUNDLE_PATH=$bundle" "BUNDLE_SHA256=$DPL_BUNDLE_SHA256"
 )

@@ -6,14 +6,15 @@ set -Eeuo pipefail
 # Installer ausschließlich nach erfolgreicher Prüfung des fest eingebetteten
 # SHA-256-Werts aus.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.8/dist/internal-repository}"
-entry_sha256="9506a79aa0df4bafb8603e00d3a6c46be640899358de7e0b4f504ebd661403db"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.9/dist/internal-repository}"
+entry_sha256="c9cce4bddf18bb5f15c195739c2290c41c3262e3ccf5abd083d89eefb41905a7"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"
 bridge="${BRIDGE:-}"
 vlan_tag="${VLAN_TAG:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
+resume_existing="${RESUME_EXISTING:-0}"
 
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
@@ -85,6 +86,7 @@ clean_environment=(
   "$ENV_BIN" -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin
   "DPL_BASE_URL=$base_url"
   "DPL_ALLOW_PUBLIC_CIDRS=$allow_public_cidrs"
+  "RESUME_EXISTING=$resume_existing"
 )
 if [[ -n "$ctid" ]]; then
   clean_environment+=("CTID=$ctid")

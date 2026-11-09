@@ -1,4 +1,4 @@
-# Proxmox-Abnahme für DPL2ACRON 3.7.8
+# Proxmox-Abnahme für DPL2ACRON 3.7.9
 
 Diese Abnahme ist für einen ausschließlich zu Testzwecken verwendeten,
 unprivilegierten Debian-13-LXC vorgesehen. Vor einem Upgrade einer vorhandenen
@@ -10,7 +10,7 @@ Der vollständige Ordner `dist/internal-repository` wird mit dem Repository auf
 GitHub veröffentlicht. Die Basisadresse des unveränderlichen Release-Tags lautet:
 
 ```text
-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.8/dist/internal-repository
+https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.9/dist/internal-repository
 ```
 
 SHA-256-Wert des Einstiegsskripts muss aus einer vertrauenswürdigen Quelle
@@ -25,14 +25,14 @@ Testumgebung anpassen:
 (
   set -Eeuo pipefail
   umask 077
-  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.8/dist/internal-repository"
+  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.9/dist/internal-repository"
   BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-bootstrap.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS "$BASE_URL/bootstrap-proxmox.sh" \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' 'e5735bcd3effacf02c32ba95dabdefe201309be352eb7633d893834b28e9238b' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' 'd56304b1841eb716d28d541410c1758c6dbdd5e9d3b4ec2c0617bdc11dbcd7e5' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="$BASE_URL" CTID=100 WEB_CIDRS="192.168.100.0/24" \
@@ -55,17 +55,17 @@ MariaDB-Datenbank angelegt und anschließend entfernt.
 (
   set -Eeuo pipefail
   umask 077
-  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.8/dist/internal-repository"
+  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.9/dist/internal-repository"
   BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-acceptance.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS "$BASE_URL/test/proxmox-acceptance.sh" \
     -o "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
-  printf '%s  %s\n' '59bb21b2794b7e1cb7e0a233aaafe2644351f9691b8c81fd974be72e206fbf10' "$BOOTSTRAP_DIR/proxmox-acceptance.sh" | \
+  printf '%s  %s\n' 'c32d67bb531fecfe1c5f13b6c816a554b007bfa9f0e54a0a3fc7490cec4e220c' "$BOOTSTRAP_DIR/proxmox-acceptance.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-    CTID=100 EXPECTED_VERSION=3.7.8 EXPECTED_VLAN_TAG=100 \
+    CTID=100 EXPECTED_VERSION=3.7.9 EXPECTED_VLAN_TAG=100 \
     /bin/bash --noprofile --norc -p "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
 )
 ```
@@ -75,7 +75,7 @@ Geprüft werden:
 - Debian 13 und unprivilegierter Container
 - global aktivierte Proxmox-Firewall, passendes Node-Backend und eingehende CT-Standardrichtlinie `DROP`
 - aktive und aktivierte Dienste
-- installierte Version 3.7.8 und erwartetes VLAN
+- installierte Version 3.7.9 und erwartetes VLAN
 - HTTPS und Zertifikatskette
 - Port 8765 ausschließlich auf Loopback und kein externes MariaDB-Listening
 - root-kontrollierte Konfigurationsdateien und sichere Cookies
@@ -109,7 +109,7 @@ vzdump 100 --mode snapshot --compress zstd
 pct exec 100 -- python3 /opt/dpl-acron/app.py --version
 ```
 
-Anschließend das geprüfte 3.7.8-Einstiegsskript in den Container kopieren und
+Anschließend das geprüfte 3.7.9-Einstiegsskript in den Container kopieren und
 ausführen. Die bei der Erstinstallation gespeicherte Datei
 `/etc/dpl-acron/update.env` liefert die interne Repository-Adresse:
 
@@ -117,26 +117,26 @@ ausführen. Die bei der Erstinstallation gespeicherte Datei
 (
   set -Eeuo pipefail
   umask 077
-  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.8/dist/internal-repository"
+  BASE_URL="https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.9/dist/internal-repository"
   BOOTSTRAP_DIR="$(/usr/bin/mktemp -d -p /root .dpl2acron-upgrade.XXXXXX)"
   trap '/bin/rm -rf -- "$BOOTSTRAP_DIR"' EXIT
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS "$BASE_URL/ct/dpl-acron.sh" \
     -o "$BOOTSTRAP_DIR/dpl-acron.sh"
-  printf '%s  %s\n' '7a315aa5ca6c8a5ac78617e3b653934c5cb3cb5ad917239fda2a1f7c5d8eaded' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
+  printf '%s  %s\n' '3d7283fa8abebdd06bc7ec3db7cc24135adf9321f1e5f2d3b6290f1efd9fd90d' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/curl --disable --proto '=https' --proto-redir '=https' --tlsv1.2 \
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS "$BASE_URL/test/proxmox-acceptance.sh" \
     -o "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
-  printf '%s  %s\n' '59bb21b2794b7e1cb7e0a233aaafe2644351f9691b8c81fd974be72e206fbf10' "$BOOTSTRAP_DIR/proxmox-acceptance.sh" | \
+  printf '%s  %s\n' 'c32d67bb531fecfe1c5f13b6c816a554b007bfa9f0e54a0a3fc7490cec4e220c' "$BOOTSTRAP_DIR/proxmox-acceptance.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/sbin/pct push 100 "$BOOTSTRAP_DIR/dpl-acron.sh" /root/dpl-acron-update.sh
   /usr/sbin/pct exec 100 -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
     /bin/bash --noprofile --norc -p /root/dpl-acron-update.sh
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin \
-    CTID=100 EXPECTED_VERSION=3.7.8 EXPECTED_VLAN_TAG=100 \
+    CTID=100 EXPECTED_VERSION=3.7.9 EXPECTED_VLAN_TAG=100 \
     /bin/bash --noprofile --norc -p "$BOOTSTRAP_DIR/proxmox-acceptance.sh"
 )
 ```

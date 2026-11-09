@@ -60,7 +60,7 @@ Platzhalter durch die freigegebene Prüfsumme aus `release.json` ersetzen:
     --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' 'e5735bcd3effacf02c32ba95dabdefe201309be352eb7633d893834b28e9238b' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' 'd56304b1841eb716d28d541410c1758c6dbdd5e9d3b4ec2c0617bdc11dbcd7e5' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -93,7 +93,7 @@ folgenden Downloads angegeben:
     --max-time 60 --speed-limit 1024 --speed-time 15 --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' 'e5735bcd3effacf02c32ba95dabdefe201309be352eb7633d893834b28e9238b' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' 'd56304b1841eb716d28d541410c1758c6dbdd5e9d3b4ec2c0617bdc11dbcd7e5' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -129,7 +129,7 @@ danach ausgeführt:
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS \
     http://WINDOWS-IP:8088/ct/dpl-acron.sh -o "$BOOTSTRAP_DIR/dpl-acron.sh"
-  printf '%s  %s\n' '7a315aa5ca6c8a5ac78617e3b653934c5cb3cb5ad917239fda2a1f7c5d8eaded' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
+  printf '%s  %s\n' '3d7283fa8abebdd06bc7ec3db7cc24135adf9321f1e5f2d3b6290f1efd9fd90d' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \

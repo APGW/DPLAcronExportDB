@@ -5,7 +5,7 @@ set -Eeuo pipefail
 # Das nachgelagerte Community-Skript wird vor der Ausführung gegen die beim
 # Release-Bau festgeschriebene SHA-256-Prüfsumme geprüft.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.8/dist/internal-repository}"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.9/dist/internal-repository}"
 community_sha256="@@COMMUNITY_SHA256@@"
 web_cidrs="${WEB_CIDRS:-}"
 ctid="${CTID:-}"
@@ -13,6 +13,7 @@ bridge="${BRIDGE:-vmbr0}"
 vlan_tag="${VLAN_TAG:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 ca_cert="${DPL_CA_CERT:-}"
+resume_existing="${RESUME_EXISTING:-0}"
 
 # Ab hier darf keine vom Aufrufer geerbte Such- oder Shell-Startkonfiguration
 # mehr in privilegierte Kindprozesse gelangen. Der äußere Aufruf wird in der
@@ -95,6 +96,8 @@ fi
 
 [[ "$allow_public_cidrs" == "0" || "$allow_public_cidrs" == "1" ]] \
   || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
+[[ "$resume_existing" == "0" || "$resume_existing" == "1" ]] \
+  || fail "RESUME_EXISTING muss 0 oder 1 sein."
 [[ "$bridge" =~ ^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,14}$ ]] || fail "BRIDGE ist ungültig."
 if [[ -n "$vlan_tag" ]]; then
   [[ "$vlan_tag" =~ ^[0-9]+$ ]] && (( vlan_tag >= 1 && vlan_tag <= 4094 )) \
@@ -138,7 +141,8 @@ if [[ -z "$ctid" ]]; then
 fi
 [[ "$ctid" =~ ^[1-9][0-9]*$ ]] || fail "CTID muss eine positive Zahl sein."
 if "$PCT_BIN" status "$ctid" >/dev/null 2>&1; then
-  fail "CT $ctid existiert bereits. Für eine Neuinstallation eine freie CTID wählen."
+  [[ "$resume_existing" == "1" ]] \
+    || fail "CT $ctid existiert bereits. Zum sicheren Fortsetzen RESUME_EXISTING=1 setzen."
 fi
 
 [[ -d /root && ! -L /root ]] || fail "/root ist kein sicheres temporäres Stammverzeichnis."
@@ -170,6 +174,7 @@ clean_environment=(
   "BRIDGE=$bridge"
   "VLAN_TAG=$vlan_tag"
   "DPL_ALLOW_PUBLIC_CIDRS=$allow_public_cidrs"
+  "RESUME_EXISTING=$resume_existing"
 )
 if [[ -n "$ca_cert" ]]; then
   clean_environment+=("DPL_CA_CERT=$ca_cert")

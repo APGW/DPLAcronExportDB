@@ -149,6 +149,9 @@ if [[ -n "$vlan_tag" ]]; then
 fi
 [[ "$allow_public_cidrs" == "0" || "$allow_public_cidrs" == "1" ]] \
   || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
+[[ "$resume_existing" == "0" || "$resume_existing" == "1" ]] \
+  || fail "RESUME_EXISTING muss 0 oder 1 sein."
+require_effective_proxmox_firewall
 if [[ -z "$admin_password" ]]; then
   read -r -s -p "Initiales oder neues DPL2ACRON-Administratorkennwort: " admin_password </dev/tty
   echo
