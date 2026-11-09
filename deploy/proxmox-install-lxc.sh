@@ -294,7 +294,10 @@ if [[ "$ct_exists" -eq 0 ]]; then
   fi
 
   echo "Erstelle unprivilegierten CT $ctid ..."
-  pct create "${create_options[@]}"
+  # pct/lxc-usernsexec benötigt für das gemappte Root-Dateisystem die übliche
+  # Proxmox-Umask. Eine vom sicheren Bootstrap geerbte 077 würde rootfs als
+  # unzugänglich anlegen und die Template-Extraktion mit EACCES abbrechen.
+  ( umask 022; pct create "${create_options[@]}" )
 else
   echo "Setze die abgebrochene Installation in CT $ctid fort ..."
 fi

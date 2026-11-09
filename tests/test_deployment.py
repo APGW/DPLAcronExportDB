@@ -305,7 +305,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.7.7", guide)
+        self.assertIn("EXPECTED_VERSION=3.7.8", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -379,7 +379,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.7/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.7.8/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)
@@ -631,9 +631,10 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('"$IP_BIN" link show dev "$bridge"', installer)
         self.assertIn("vlan_filtering", installer)
         self.assertIn('network="$network,tag=$vlan_tag"', installer)
+        self.assertIn('( umask 022; pct create "${create_options[@]}" )', installer)
         self.assertLess(
             installer.index("vlan_filtering"),
-            installer.index('pct create "${create_options[@]}"'),
+            installer.index('( umask 022; pct create "${create_options[@]}" )'),
         )
         self.assertIn("EXPECTED_VLAN_TAG", acceptance)
         self.assertIn('tag=$expected_vlan_tag', acceptance)
