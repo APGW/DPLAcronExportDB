@@ -336,6 +336,7 @@ APT_SOURCES
     -o "Dir::Etc::trusted=/etc/apt/trusted.gpg"
     -o "Dir::Etc::trustedparts=/etc/apt/trusted.gpg.d"
     -o "APT::Architecture=amd64"
+    -o "APT::Sandbox::User=root"
     -o "Debug::NoLocking=1"
     -o "APT::Get::List-Cleanup=0"
   )

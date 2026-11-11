@@ -115,7 +115,9 @@ if [[ "$packages_missing" -eq 1 ]]; then
       echo "Das Offline-Paketverzeichnis enthält keine Debian-Pakete." >&2
       exit 1
     }
-    apt-get install -y --no-install-recommends --no-download "${offline_debs[@]}"
+    dpkg --unpack "${offline_debs[@]}"
+    dpkg --configure -a
+    dpkg --audit
   else
     apt-get update
     apt-get install -y --no-install-recommends python3 python3-mariadb-connector mariadb-server mariadb-client util-linux ca-certificates gzip nginx openssl

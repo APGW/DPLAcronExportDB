@@ -265,7 +265,9 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('pct push "$ctid" "$offline_archive"', proxmox)
         self.assertIn('"DPL_OFFLINE_PACKAGE_DIR=$offline_package_dir"', proxmox)
         self.assertIn("DPL_OFFLINE_PACKAGE_DIR", debian)
-        self.assertIn("--no-download", debian)
+        self.assertIn('dpkg --unpack "${offline_debs[@]}"', debian)
+        self.assertIn("dpkg --configure -a", debian)
+        self.assertIn("dpkg --audit", debian)
         self.assertIn("offline_debs", debian)
         self.assertNotIn("net.ipv4.ip_forward", proxmox)
         self.assertNotIn("masquerade", proxmox.lower())
@@ -320,7 +322,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.8.1", guide)
+        self.assertIn("EXPECTED_VERSION=3.8.2", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -394,7 +396,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.1/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.2/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)
