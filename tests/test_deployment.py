@@ -156,6 +156,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("mariadb-server", installer)
         self.assertIn("python3-mariadb-connector", installer)
         self.assertIn("systemctl enable --now mariadb.service", installer)
+        self.assertIn("install -d -o mysql -g mysql -m 0755 /run/mysqld", installer)
         self.assertIn("systemctl is-active --quiet mariadb.service", installer)
         self.assertIn("CREATE DATABASE IF NOT EXISTS dpl_acron", installer)
         self.assertIn("CREATE USER IF NOT EXISTS 'dpl_acron'@'localhost'", installer)
@@ -185,6 +186,7 @@ class DebianDeploymentTest(unittest.TestCase):
             installer.index("source_dir="),
         )
         self.assertIn('admin_password_input="${DPL_ADMIN_PASSWORD:-}"', installer)
+        self.assertIn('${#admin_password_input} >= 12', installer)
         self.assertIn('"$config_dir/update.env"', installer)
 
     def test_intranet_binding_uses_mandatory_https_proxy(self) -> None:
@@ -265,6 +267,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('offline_debs=(/root/dpl2acron-offline-packages/*.deb)', proxmox)
         self.assertIn('pct exec "$ctid" -- rm -rf -- "$offline_package_dir"', proxmox)
         self.assertIn("Der CT besitzt bereits alle benötigten Debian-Pakete.", proxmox)
+        self.assertIn('${#admin_password} >= 12', proxmox)
         self.assertIn("trixie-security", proxmox)
         self.assertIn("--download-only", proxmox)
         self.assertIn('pct push "$ctid" "$offline_archive"', proxmox)
@@ -330,7 +333,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.8.4", guide)
+        self.assertIn("EXPECTED_VERSION=3.8.5", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -404,7 +407,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.4/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.5/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)

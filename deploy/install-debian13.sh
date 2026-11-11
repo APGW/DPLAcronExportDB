@@ -55,6 +55,12 @@ if [[ ! -f "$auth_env" && -z "$admin_password_input" ]]; then
     exit 1
   fi
 fi
+if [[ -n "$admin_password_input" ]]; then
+  (( ${#admin_password_input} >= 12 && ${#admin_password_input} <= 256 )) || {
+    echo "Das Administratorkennwort muss zwischen 12 und 256 Zeichen lang sein." >&2
+    exit 1
+  }
+fi
 
 restore_service_after_failure() {
   local exit_code=$?
@@ -168,6 +174,7 @@ PY
   exit 1
 }
 
+install -d -o mysql -g mysql -m 0755 /run/mysqld
 systemctl enable --now mariadb.service
 systemctl is-active --quiet mariadb.service || {
   echo "MariaDB konnte nicht gestartet werden." >&2

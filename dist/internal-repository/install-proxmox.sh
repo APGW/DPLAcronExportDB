@@ -5,8 +5,8 @@ set -Eeuo pipefail
 # Das nachgelagerte Community-Skript wird vor der Ausführung gegen die beim
 # Release-Bau festgeschriebene SHA-256-Prüfsumme geprüft.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.4/dist/internal-repository}"
-community_sha256="d3d30741be7090985530574730bc42e2e3d7ba8929b1663ef73d24f9e8400adf"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.5/dist/internal-repository}"
+community_sha256="eb51faa252313a5bcca39380842787d9544211e13a4097711e7cfccf32b4a2a3"
 web_cidrs="${WEB_CIDRS:-}"
 ctid="${CTID:-}"
 bridge="${BRIDGE:-vmbr0}"

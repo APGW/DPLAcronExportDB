@@ -130,6 +130,8 @@ if [[ -z "$admin_password" ]]; then
   [[ "$admin_password" == "$password_confirmation" ]] || fail "Die Kennwörter stimmen nicht überein."
   unset password_confirmation
 fi
+(( ${#admin_password} >= 12 && ${#admin_password} <= 256 )) \
+  || fail "Das Administratorkennwort muss zwischen 12 und 256 Zeichen lang sein."
 if [[ -n "$bundle_path" && -n "$bundle_url" ]]; then
   fail "BUNDLE_PATH und BUNDLE_URL dürfen nicht gleichzeitig gesetzt sein."
 fi
