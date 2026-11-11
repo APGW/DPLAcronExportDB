@@ -5,7 +5,7 @@ einer orange geänderten Zelle aus einer hochgeladenen DPL, stellt sie zur gemei
 Korrektur bereit und erzeugt getrennte ACRON- und
 WINCC60-Provider-Exporte.
 
-## Version 3.8.0
+## Version 3.8.1
 
 - prüft eine DPL vor der Übernahme und zeigt neue, geänderte sowie entfallene Datensätze an
 - bewahrt vorherige Projektversionen schreibgeschützt und auswählbar auf
@@ -21,6 +21,7 @@ WINCC60-Provider-Exporte.
 - verwendet für privilegierte Arbeitsdateien ausschließlich ein geprüftes, root-kontrolliertes Verzeichnis
 - beschränkt HTTPS unabhängig von Datacenter-Einstellungen per Nginx auf die festgelegten LAN-/VPN-Netze
 - unterstützt geprüfte VLAN-Tags für VLAN-aware Proxmox-Bridges
+- unterstützt einen PVE-gesteuerten Offline-Paketmodus für CTs ohne Gateway und DNS
 
 Die Tabellenansicht unterstützt Einzel- und Mehrfachauswahl. PCS7-Abweichungen
 können direkt in der Zeile oder gesammelt als geprüft markiert werden. Ein

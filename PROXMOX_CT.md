@@ -207,6 +207,20 @@ nicht existiert oder zur Laufzeit kein VLAN-Filtering aktiviert ist. DHCP-Relay,
 DHCP-Server, Gateway und Routing für VLAN 100 werden nicht vom Installer
 eingerichtet und müssen im Netzwerk bereits vorhanden sein.
 
+Für ein vollständig isoliertes Testnetz kann PVE die Debian-13-Pakete laden und
+per `pct push` in den CT übertragen. Der CT benötigt dann weder Gateway noch DNS:
+
+```bash
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  CTID=407 BRIDGE=vmbr1 IP_CONFIG=172.31.100.2/24 \
+  WEB_CIDRS=172.31.100.1/32 DPL_OFFLINE_PACKAGES=1 \
+  /bin/bash --noprofile --norc -p /root/proxmox-install-lxc.sh
+```
+
+PVE benötigt dazu eine Adresse wie `172.31.100.1/24` auf `vmbr1` und normalen
+Internetzugang. Der Installer aktiviert weder Routing noch NAT und verändert
+keine Datacenter- oder Node-Firewalleinstellungen.
+
 Das Release kann alternativ von einer internen HTTPS-Adresse geladen werden.
 Die erwartete Prüfsumme muss dabei ausdrücklich angegeben werden:
 

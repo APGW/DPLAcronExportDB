@@ -9,8 +9,8 @@ set -Eeuo pipefail
 # Ein versehentlich geerbtes Kennwort darf keinem Prüf-, Download- oder
 # Installationsprozess des Wrappers zugänglich sein.
 APP="dpl-acron"
-DPL_APP_VERSION="3.8.0"
-DPL_BUNDLE_SHA256="2d957cee6f438baca6f7282c474895e91176e6dd0ab19c8ddcf0d0f764de54d7"
+DPL_APP_VERSION="3.8.1"
+DPL_BUNDLE_SHA256="38acfbe83a3342fb343989cdd9ce5e66cbe1051ce96a51b730dfc1bbf4d3fb71"
 DPL_BASE_URL="${DPL_BASE_URL:-}"
 DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
 DPL_CA_CERT="${DPL_CA_CERT:-}"
@@ -20,6 +20,9 @@ BRIDGE="${BRIDGE:-vmbr0}"
 VLAN_TAG="${VLAN_TAG:-}"
 DPL_ALLOW_PUBLIC_CIDRS="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 RESUME_EXISTING="${RESUME_EXISTING:-0}"
+IP_CONFIG="${IP_CONFIG:-dhcp}"
+GATEWAY="${GATEWAY:-}"
+DPL_OFFLINE_PACKAGES="${DPL_OFFLINE_PACKAGES:-0}"
 
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
@@ -76,6 +79,8 @@ fi
 if [[ "$update_mode" -eq 0 ]]; then
   [[ "$RESUME_EXISTING" == "0" || "$RESUME_EXISTING" == "1" ]] \
     || fail "RESUME_EXISTING muss 0 oder 1 sein."
+  [[ "$DPL_OFFLINE_PACKAGES" == "0" || "$DPL_OFFLINE_PACKAGES" == "1" ]] \
+    || fail "DPL_OFFLINE_PACKAGES muss 0 oder 1 sein."
   [[ -n "$WEB_CIDRS" ]] || fail "WEB_CIDRS muss die erlaubten Intranet-/VPN-Netze enthalten."
 fi
 [[ "$DPL_ALLOW_PUBLIC_CIDRS" == "0" || "$DPL_ALLOW_PUBLIC_CIDRS" == "1" ]] \
@@ -178,6 +183,8 @@ clean_environment=(
   "BRIDGE=$BRIDGE" "VLAN_TAG=$VLAN_TAG"
   "DPL_ALLOW_PUBLIC_CIDRS=$DPL_ALLOW_PUBLIC_CIDRS"
   "RESUME_EXISTING=$RESUME_EXISTING"
+  "IP_CONFIG=$IP_CONFIG" "GATEWAY=$GATEWAY"
+  "DPL_OFFLINE_PACKAGES=$DPL_OFFLINE_PACKAGES"
   "DPL_UPDATE_BASE_URL=$DPL_BASE_URL" "DPL_UPDATE_ALLOW_HTTP=$DPL_ALLOW_HTTP"
   "BUNDLE_PATH=$bundle" "BUNDLE_SHA256=$DPL_BUNDLE_SHA256"
 )

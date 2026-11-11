@@ -26,6 +26,7 @@ update_base_url="${DPL_UPDATE_BASE_URL:-}"
 update_allow_http="${DPL_UPDATE_ALLOW_HTTP:-0}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 ca_cert="${DPL_CA_CERT:-}"
+offline_packages="${DPL_OFFLINE_PACKAGES:-0}"
 
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
@@ -37,6 +38,7 @@ IFS=$' \t\n'
 builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 
 readonly BASH_BIN=/bin/bash
+readonly APT_GET_BIN=/usr/bin/apt-get
 readonly CURL_BIN=/usr/bin/curl
 readonly ENV_BIN=/usr/bin/env
 readonly IP_BIN=/usr/sbin/ip
@@ -116,6 +118,8 @@ fi
   || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
 [[ "$resume_existing" == "0" || "$resume_existing" == "1" ]] \
   || fail "RESUME_EXISTING muss 0 oder 1 sein."
+[[ "$offline_packages" == "0" || "$offline_packages" == "1" ]] \
+  || fail "DPL_OFFLINE_PACKAGES muss 0 oder 1 sein."
 [[ -z "$ssh_cidrs" && -z "$ssh_public_keys" ]] \
   || fail "SSH-Freigaben erfordern eine separat verwaltete Host-Firewall und werden von diesem Installer nicht eingerichtet."
 if [[ -z "$admin_password" ]]; then
@@ -131,7 +135,7 @@ if [[ -n "$bundle_path" && -n "$bundle_url" ]]; then
 fi
 [[ "$ct_hostname" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] || fail "Ungültiger CT_HOSTNAME."
 [[ "$ip_config" == "dhcp" || "$ip_config" =~ ^[0-9.]+/[0-9]{1,2}$ ]] || fail "IP_CONFIG muss dhcp oder IPv4/CIDR sein."
-if [[ "$ip_config" != "dhcp" && -z "$gateway" ]]; then
+if [[ "$ip_config" != "dhcp" && -z "$gateway" && "$offline_packages" != "1" ]]; then
   fail "Für eine statische IP muss GATEWAY gesetzt sein."
 fi
 ct_exists=0
@@ -306,16 +310,61 @@ pct set "$ctid" --onboot 0
 pct start "$ctid"
 pct exec "$ctid" -- systemctl disable --now ssh.service ssh.socket >/dev/null 2>&1 || true
 
-echo "Warte auf Netzwerk und Paketquellen ..."
-network_ready=0
-for _ in {1..30}; do
-  if pct exec "$ctid" -- getent hosts deb.debian.org >/dev/null 2>&1; then
-    network_ready=1
-    break
-  fi
-  sleep 2
-done
-[[ "$network_ready" -eq 1 ]] || fail "Der CT erreicht die Debian-Paketquellen nicht."
+offline_package_dir=""
+if [[ "$offline_packages" == "1" ]]; then
+  echo "Lade Debian-13-Pakete auf dem PVE-Host für die Offline-Installation ..."
+  [[ -x "$APT_GET_BIN" ]] || fail "apt-get fehlt auf dem Proxmox-Host."
+  apt_root="$work_dir/offline-apt"
+  apt_lists="$apt_root/lists"
+  apt_archives="$apt_root/archives"
+  apt_sources="$apt_root/sources.list"
+  apt_source_parts="$apt_root/sources.list.d"
+  apt_status="$apt_root/status"
+  mkdir -p "$apt_lists/partial" "$apt_archives/partial" "$apt_source_parts"
+  pct pull "$ctid" /var/lib/dpkg/status "$apt_status"
+  cat > "$apt_sources" <<'APT_SOURCES'
+deb https://deb.debian.org/debian trixie main
+deb https://security.debian.org/debian-security trixie-security main
+deb https://deb.debian.org/debian trixie-updates main
+APT_SOURCES
+  apt_options=(
+    -o "Dir::State::status=$apt_status"
+    -o "Dir::State::Lists=$apt_lists"
+    -o "Dir::Cache::archives=$apt_archives"
+    -o "Dir::Etc::sourcelist=$apt_sources"
+    -o "Dir::Etc::sourceparts=$apt_source_parts"
+    -o "Dir::Etc::trusted=/etc/apt/trusted.gpg"
+    -o "Dir::Etc::trustedparts=/etc/apt/trusted.gpg.d"
+    -o "APT::Architecture=amd64"
+    -o "Debug::NoLocking=1"
+    -o "APT::Get::List-Cleanup=0"
+  )
+  "$APT_GET_BIN" "${apt_options[@]}" update
+  "$APT_GET_BIN" "${apt_options[@]}" --download-only --no-install-recommends -y install \
+    python3 python3-mariadb-connector mariadb-server mariadb-client util-linux \
+    ca-certificates gzip nginx openssl
+  compgen -G "$apt_archives/*.deb" >/dev/null \
+    || fail "Der PVE-Host hat keine Debian-Pakete für den CT heruntergeladen."
+  offline_archive="$work_dir/dpl2acron-debian13-packages.tar.gz"
+  tar -czf "$offline_archive" -C "$apt_archives" .
+  offline_package_dir="/root/dpl2acron-offline-packages"
+  pct exec "$ctid" -- mkdir -p "$offline_package_dir"
+  pct exec "$ctid" -- chmod 0700 "$offline_package_dir"
+  pct push "$ctid" "$offline_archive" /root/dpl2acron-debian13-packages.tar.gz
+  pct exec "$ctid" -- tar -xzf /root/dpl2acron-debian13-packages.tar.gz -C "$offline_package_dir"
+  pct exec "$ctid" -- rm -f /root/dpl2acron-debian13-packages.tar.gz
+else
+  echo "Warte auf Netzwerk und Paketquellen ..."
+  network_ready=0
+  for _ in {1..30}; do
+    if pct exec "$ctid" -- getent hosts deb.debian.org >/dev/null 2>&1; then
+      network_ready=1
+      break
+    fi
+    sleep 2
+  done
+  [[ "$network_ready" -eq 1 ]] || fail "Der CT erreicht die Debian-Paketquellen nicht."
+fi
 
 echo "Übertrage das geprüfte Release in CT $ctid ..."
 pct push "$ctid" "$bundle_file" /tmp/dpl-acron-debian13.tar.gz
@@ -340,6 +389,7 @@ pct exec "$ctid" -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bi
   "DPL_SECURE_COOKIE=1" \
   "DPL_TRUST_PROXY=1" \
   "DPL_WEB_CIDRS=$web_cidrs" \
+  "DPL_OFFLINE_PACKAGE_DIR=$offline_package_dir" \
   "DPL_UPDATE_BASE_URL=$update_base_url" \
   "DPL_UPDATE_ALLOW_HTTP=$update_allow_http" \
   "DPL_UPDATE_CA_CERT_SOURCE=$container_ca_file" \
@@ -347,6 +397,9 @@ pct exec "$ctid" -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bi
   /bin/bash --noprofile --norc -p -c \
   'set -Eeuo pipefail; export DPL_ADMIN_PASSWORD="$(/usr/bin/cat -- "$DPL_ADMIN_PASSWORD_FILE")"; /bin/rm -f -- "$DPL_ADMIN_PASSWORD_FILE"; unset DPL_ADMIN_PASSWORD_FILE; exec /bin/bash --noprofile --norc -p /root/dpl-acron-release/deploy/install-debian13.sh'
 unset admin_password
+if [[ -n "$offline_package_dir" ]]; then
+  pct exec "$ctid" -- rm -rf -- "$offline_package_dir"
+fi
 
 health="$(pct exec "$ctid" -- python3 -c \
   'import urllib.request; print(urllib.request.urlopen("http://127.0.0.1:8765/api/health", timeout=5).read().decode())')"

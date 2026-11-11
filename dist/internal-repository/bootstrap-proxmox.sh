@@ -6,8 +6,8 @@ set -Eeuo pipefail
 # Installer ausschließlich nach erfolgreicher Prüfung des fest eingebetteten
 # SHA-256-Werts aus.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.0/dist/internal-repository}"
-entry_sha256="1f56ca0020c520ba04e7be222e641e982c9d0c88e9f6d0dfc0189d9956d27ca0"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.1/dist/internal-repository}"
+entry_sha256="ce7b5ad329f95867ff7d12141e086837ce8fd19bf73053c79bcf25bb3f5237cd"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"
@@ -15,6 +15,9 @@ bridge="${BRIDGE:-}"
 vlan_tag="${VLAN_TAG:-}"
 allow_public_cidrs="${DPL_ALLOW_PUBLIC_CIDRS:-0}"
 resume_existing="${RESUME_EXISTING:-0}"
+ip_config="${IP_CONFIG:-}"
+gateway="${GATEWAY:-}"
+offline_packages="${DPL_OFFLINE_PACKAGES:-0}"
 
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
@@ -87,6 +90,7 @@ clean_environment=(
   "DPL_BASE_URL=$base_url"
   "DPL_ALLOW_PUBLIC_CIDRS=$allow_public_cidrs"
   "RESUME_EXISTING=$resume_existing"
+  "DPL_OFFLINE_PACKAGES=$offline_packages"
 )
 if [[ -n "$ctid" ]]; then
   clean_environment+=("CTID=$ctid")
@@ -99,6 +103,12 @@ if [[ -n "$bridge" ]]; then
 fi
 if [[ -n "$vlan_tag" ]]; then
   clean_environment+=("VLAN_TAG=$vlan_tag")
+fi
+if [[ -n "$ip_config" ]]; then
+  clean_environment+=("IP_CONFIG=$ip_config")
+fi
+if [[ -n "$gateway" ]]; then
+  clean_environment+=("GATEWAY=$gateway")
 fi
 if [[ -n "$ca_cert" ]]; then
   clean_environment+=("DPL_CA_CERT=$ca_cert")

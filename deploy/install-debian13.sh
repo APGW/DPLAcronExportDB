@@ -6,10 +6,11 @@ update_base_url="${DPL_UPDATE_BASE_URL:-}"
 update_allow_http="${DPL_UPDATE_ALLOW_HTTP:-0}"
 update_ca_cert_source="${DPL_UPDATE_CA_CERT_SOURCE:-}"
 web_cidrs_input="${DPL_WEB_CIDRS:-}"
+offline_package_dir="${DPL_OFFLINE_PACKAGE_DIR:-}"
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
-builtin unset DPL_ADMIN_PASSWORD DPL_WEB_CIDRS BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
+builtin unset DPL_ADMIN_PASSWORD DPL_WEB_CIDRS DPL_OFFLINE_PACKAGE_DIR BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
   LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export -n IFS
 IFS=$' \t\n'
@@ -102,8 +103,23 @@ command -v openssl >/dev/null 2>&1 || packages_missing=1
 "$PYTHON_BIN" -I -c 'import mariadb' >/dev/null 2>&1 || packages_missing=1
 if [[ "$packages_missing" -eq 1 ]]; then
   export DEBIAN_FRONTEND=noninteractive
-  apt-get update
-  apt-get install -y --no-install-recommends python3 python3-mariadb-connector mariadb-server mariadb-client util-linux ca-certificates gzip nginx openssl
+  if [[ -n "$offline_package_dir" ]]; then
+    [[ "$offline_package_dir" == /root/dpl2acron-offline-packages && -d "$offline_package_dir" && ! -L "$offline_package_dir" ]] || {
+      echo "DPL_OFFLINE_PACKAGE_DIR ist ungültig oder unsicher." >&2
+      exit 1
+    }
+    shopt -s nullglob
+    offline_debs=("$offline_package_dir"/*.deb)
+    shopt -u nullglob
+    [[ "${#offline_debs[@]}" -gt 0 ]] || {
+      echo "Das Offline-Paketverzeichnis enthält keine Debian-Pakete." >&2
+      exit 1
+    }
+    apt-get install -y --no-install-recommends --no-download "${offline_debs[@]}"
+  else
+    apt-get update
+    apt-get install -y --no-install-recommends python3 python3-mariadb-connector mariadb-server mariadb-client util-linux ca-certificates gzip nginx openssl
+  fi
 fi
 
 "$PYTHON_BIN" -I -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else "Python 3.11 oder neuer ist erforderlich.")'

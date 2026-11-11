@@ -3,10 +3,10 @@ set -Eeuo pipefail
 
 # Nicht-destruktive Abnahme einer installierten DPL2ACRON-Testinstanz.
 # Ausführung auf dem Proxmox-VE-Host:
-#   CTID=100 EXPECTED_VERSION=3.8.0 EXPECTED_VLAN_TAG=100 /bin/bash --noprofile --norc -p proxmox-acceptance.sh
+#   CTID=100 EXPECTED_VERSION=3.8.1 EXPECTED_VLAN_TAG=100 /bin/bash --noprofile --norc -p proxmox-acceptance.sh
 
 ctid="${CTID:-}"
-expected_version="${EXPECTED_VERSION:-3.8.0}"
+expected_version="${EXPECTED_VERSION:-3.8.1}"
 expected_vlan_tag="${EXPECTED_VLAN_TAG:-}"
 checks=0
 temporary_dir=""

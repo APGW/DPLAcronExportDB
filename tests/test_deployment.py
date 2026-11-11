@@ -247,6 +247,29 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("`3306`", guide)
         self.assertIn("Post-Install", guide)
 
+    def test_isolated_ct_packages_are_downloaded_on_pve_and_pushed_offline(self) -> None:
+        bootstrap = (ROOT / "deploy" / "bootstrap-proxmox.sh").read_text(encoding="utf-8")
+        entry = (ROOT / "deploy" / "install-proxmox-entry.sh").read_text(encoding="utf-8")
+        community = (ROOT / "deploy" / "community-ct.sh").read_text(encoding="utf-8")
+        proxmox = (ROOT / "deploy" / "proxmox-install-lxc.sh").read_text(encoding="utf-8")
+        debian = (ROOT / "deploy" / "install-debian13.sh").read_text(encoding="utf-8")
+
+        for content in (bootstrap, entry, community, proxmox):
+            self.assertIn("DPL_OFFLINE_PACKAGES", content)
+        for content in (bootstrap, entry, community):
+            self.assertIn("IP_CONFIG", content)
+            self.assertIn("GATEWAY", content)
+        self.assertIn('pct pull "$ctid" /var/lib/dpkg/status', proxmox)
+        self.assertIn("trixie-security", proxmox)
+        self.assertIn("--download-only", proxmox)
+        self.assertIn('pct push "$ctid" "$offline_archive"', proxmox)
+        self.assertIn('"DPL_OFFLINE_PACKAGE_DIR=$offline_package_dir"', proxmox)
+        self.assertIn("DPL_OFFLINE_PACKAGE_DIR", debian)
+        self.assertIn("--no-download", debian)
+        self.assertIn("offline_debs", debian)
+        self.assertNotIn("net.ipv4.ip_forward", proxmox)
+        self.assertNotIn("masquerade", proxmox.lower())
+
     def test_daily_database_backup_is_enabled(self) -> None:
         installer = (ROOT / "deploy" / "install-debian13.sh").read_text(encoding="utf-8")
         timer = (ROOT / "deploy" / "dpl-acron-backup.timer").read_text(encoding="utf-8")
@@ -297,7 +320,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.8.0", guide)
+        self.assertIn("EXPECTED_VERSION=3.8.1", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -371,7 +394,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.0/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.1/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)

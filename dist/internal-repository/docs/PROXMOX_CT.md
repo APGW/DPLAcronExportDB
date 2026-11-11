@@ -60,7 +60,7 @@ Platzhalter durch die freigegebene Prüfsumme aus `release.json` ersetzen:
     --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' '096dfbca14a03d86a2b67187d21bea64daaecf19d5c788e831b5d1273bbbe5b1' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' '2a2240c2026c53343e8fc46497f4ee0c132ef66855786e6033c1b47a9515015e' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -93,7 +93,7 @@ folgenden Downloads angegeben:
     --max-time 60 --speed-limit 1024 --speed-time 15 --max-filesize 1048576 -fsS \
     https://software.intern/dpl-acron/bootstrap-proxmox.sh \
     -o "$BOOTSTRAP_DIR/bootstrap-proxmox.sh"
-  printf '%s  %s\n' '096dfbca14a03d86a2b67187d21bea64daaecf19d5c788e831b5d1273bbbe5b1' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
+  printf '%s  %s\n' '2a2240c2026c53343e8fc46497f4ee0c132ef66855786e6033c1b47a9515015e' "$BOOTSTRAP_DIR/bootstrap-proxmox.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_BASE_URL="https://software.intern/dpl-acron" \
@@ -129,7 +129,7 @@ danach ausgeführt:
     --connect-timeout 10 --max-time 60 --speed-limit 1024 --speed-time 15 \
     --max-filesize 1048576 -fsS \
     http://WINDOWS-IP:8088/ct/dpl-acron.sh -o "$BOOTSTRAP_DIR/dpl-acron.sh"
-  printf '%s  %s\n' '59ded74f86acd46735ac48d25b78fe36e03656f1cc7d13dedbd645b49cfc8042' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
+  printf '%s  %s\n' 'c7e41e70cfd540ebf57502c4dd623ac667006e07934cdde93717e2ab6548b521' "$BOOTSTRAP_DIR/dpl-acron.sh" | \
     /usr/bin/sha256sum --check --status -
   /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
     DPL_ALLOW_HTTP=1 DPL_BASE_URL="http://WINDOWS-IP:8088" \
@@ -206,6 +206,20 @@ Der Installer akzeptiert VLAN-IDs von 1 bis 4094 und bricht ab, wenn die Bridge
 nicht existiert oder zur Laufzeit kein VLAN-Filtering aktiviert ist. DHCP-Relay,
 DHCP-Server, Gateway und Routing für VLAN 100 werden nicht vom Installer
 eingerichtet und müssen im Netzwerk bereits vorhanden sein.
+
+Für ein vollständig isoliertes Testnetz kann PVE die Debian-13-Pakete laden und
+per `pct push` in den CT übertragen. Der CT benötigt dann weder Gateway noch DNS:
+
+```bash
+/usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+  CTID=407 BRIDGE=vmbr1 IP_CONFIG=172.31.100.2/24 \
+  WEB_CIDRS=172.31.100.1/32 DPL_OFFLINE_PACKAGES=1 \
+  /bin/bash --noprofile --norc -p /root/proxmox-install-lxc.sh
+```
+
+PVE benötigt dazu eine Adresse wie `172.31.100.1/24` auf `vmbr1` und normalen
+Internetzugang. Der Installer aktiviert weder Routing noch NAT und verändert
+keine Datacenter- oder Node-Firewalleinstellungen.
 
 Das Release kann alternativ von einer internen HTTPS-Adresse geladen werden.
 Die erwartete Prüfsumme muss dabei ausdrücklich angegeben werden:
