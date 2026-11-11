@@ -6,8 +6,8 @@ set -Eeuo pipefail
 # Installer ausschließlich nach erfolgreicher Prüfung des fest eingebetteten
 # SHA-256-Werts aus.
 
-base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.3/dist/internal-repository}"
-entry_sha256="9cad464bf99f84c3ee37ac81fa7cac804a4a5c4ae7d0bbf1817ccf31caf969d9"
+base_url="${DPL_BASE_URL:-https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.4/dist/internal-repository}"
+entry_sha256="ab27efaa41a1804f7e91a01ee309c233588959c339ed0b27f73ec95d4b4083df"
 ca_cert="${DPL_CA_CERT:-}"
 ctid="${CTID:-}"
 web_cidrs="${WEB_CIDRS:-}"

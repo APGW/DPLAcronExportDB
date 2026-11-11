@@ -260,6 +260,11 @@ class DebianDeploymentTest(unittest.TestCase):
             self.assertIn("IP_CONFIG", content)
             self.assertIn("GATEWAY", content)
         self.assertIn('pct pull "$ctid" /var/lib/dpkg/status', proxmox)
+        self.assertIn("Bereinige einen möglichen abgebrochenen Offline-Paketlauf", proxmox)
+        self.assertIn("Offline-Wiederherstellung: Zwischenkonfiguration", proxmox)
+        self.assertIn('offline_debs=(/root/dpl2acron-offline-packages/*.deb)', proxmox)
+        self.assertIn('pct exec "$ctid" -- rm -rf -- "$offline_package_dir"', proxmox)
+        self.assertIn("Der CT besitzt bereits alle benötigten Debian-Pakete.", proxmox)
         self.assertIn("trixie-security", proxmox)
         self.assertIn("--download-only", proxmox)
         self.assertIn('pct push "$ctid" "$offline_archive"', proxmox)
@@ -325,7 +330,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn("acceptance_test_sha256", builder)
         guide = (ROOT / "PROXMOX_TEST.md").read_text(encoding="utf-8")
         self.assertIn("ABNAHME ERFOLGREICH", guide)
-        self.assertIn("EXPECTED_VERSION=3.8.3", guide)
+        self.assertIn("EXPECTED_VERSION=3.8.4", guide)
         self.assertIn("EINSTIEGSSKRIPT_SHA256", guide)
 
     def test_internal_repository_entrypoint_executes_only_verified_project_code(self) -> None:
@@ -399,7 +404,7 @@ class DebianDeploymentTest(unittest.TestCase):
         self.assertIn('Replace("PROXMOX_BOOTSTRAP_SHA256", $bootstrapHash)', builder)
         self.assertIn("@@COMMUNITY_SHA256@@", entry)
         self.assertIn(
-            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.3/dist/internal-repository",
+            "https://raw.githubusercontent.com/APGW/DPLAcronExportDB/v3.8.4/dist/internal-repository",
             entry,
         )
         self.assertIn('"$SHA256SUM_BIN" --check --status', entry)

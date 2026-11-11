@@ -312,6 +312,35 @@ pct exec "$ctid" -- systemctl disable --now ssh.service ssh.socket >/dev/null 2>
 
 offline_package_dir=""
 if [[ "$offline_packages" == "1" ]]; then
+  offline_package_dir="/root/dpl2acron-offline-packages"
+  if [[ "$resume_existing" == "1" ]]; then
+    echo "Bereinige einen möglichen abgebrochenen Offline-Paketlauf im CT ..."
+    pct exec "$ctid" -- /bin/bash --noprofile --norc -p -c '
+      set -Eeuo pipefail
+      shopt -s nullglob
+      offline_debs=(/root/dpl2acron-offline-packages/*.deb)
+      shopt -u nullglob
+      if [[ "${#offline_debs[@]}" -eq 0 ]]; then
+        exit 0
+      fi
+      offline_packages_ready=0
+      for offline_attempt in 1 2 3; do
+        if dpkg --unpack "${offline_debs[@]}"; then
+          offline_packages_ready=1
+          break
+        fi
+        echo "Offline-Wiederherstellung: Zwischenkonfiguration nach Durchlauf $offline_attempt ..."
+        dpkg --configure -a || true
+      done
+      [[ "$offline_packages_ready" -eq 1 ]] || {
+        echo "Der abgebrochene Offline-Paketlauf konnte nicht wiederhergestellt werden." >&2
+        exit 1
+      }
+      dpkg --configure -a
+      dpkg --audit
+    '
+    pct exec "$ctid" -- rm -rf -- "$offline_package_dir"
+  fi
   echo "Lade Debian-13-Pakete auf dem PVE-Host für die Offline-Installation ..."
   [[ -x "$APT_GET_BIN" ]] || fail "apt-get fehlt auf dem Proxmox-Host."
   apt_root="$work_dir/offline-apt"
@@ -344,16 +373,18 @@ APT_SOURCES
   "$APT_GET_BIN" "${apt_options[@]}" --download-only --no-install-recommends -y install \
     python3 python3-mariadb-connector mariadb-server mariadb-client util-linux \
     ca-certificates gzip nginx openssl
-  compgen -G "$apt_archives/*.deb" >/dev/null \
-    || fail "Der PVE-Host hat keine Debian-Pakete für den CT heruntergeladen."
-  offline_archive="$work_dir/dpl2acron-debian13-packages.tar.gz"
-  tar -czf "$offline_archive" -C "$apt_archives" .
-  offline_package_dir="/root/dpl2acron-offline-packages"
-  pct exec "$ctid" -- mkdir -p "$offline_package_dir"
-  pct exec "$ctid" -- chmod 0700 "$offline_package_dir"
-  pct push "$ctid" "$offline_archive" /root/dpl2acron-debian13-packages.tar.gz
-  pct exec "$ctid" -- tar -xzf /root/dpl2acron-debian13-packages.tar.gz -C "$offline_package_dir"
-  pct exec "$ctid" -- rm -f /root/dpl2acron-debian13-packages.tar.gz
+  if compgen -G "$apt_archives/*.deb" >/dev/null; then
+    offline_archive="$work_dir/dpl2acron-debian13-packages.tar.gz"
+    tar -czf "$offline_archive" -C "$apt_archives" .
+    pct exec "$ctid" -- mkdir -p "$offline_package_dir"
+    pct exec "$ctid" -- chmod 0700 "$offline_package_dir"
+    pct push "$ctid" "$offline_archive" /root/dpl2acron-debian13-packages.tar.gz
+    pct exec "$ctid" -- tar -xzf /root/dpl2acron-debian13-packages.tar.gz -C "$offline_package_dir"
+    pct exec "$ctid" -- rm -f /root/dpl2acron-debian13-packages.tar.gz
+  else
+    echo "Der CT besitzt bereits alle benötigten Debian-Pakete."
+    offline_package_dir=""
+  fi
 else
   echo "Warte auf Netzwerk und Paketquellen ..."
   network_ready=0

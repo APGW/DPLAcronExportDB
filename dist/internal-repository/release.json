@@ -1,18 +1,18 @@
 {
   "application": "DPL2ACRON",
-  "version": "3.8.3",
-  "bundle": "releases/3.8.3/dpl-acron-debian13.tar.gz",
-  "bundle_sha256": "047ff6a91a1aae2a310ba85bffb353c2c4626e684141a5466a8c4afa651c1604",
-  "installer": "releases/3.8.3/proxmox-install-lxc.sh",
-  "installer_sha256": "3d7da6cf2c8cc00e23f267cdd693ac23235b4dbe5498c7d7056d0b06cca35638",
+  "version": "3.8.4",
+  "bundle": "releases/3.8.4/dpl-acron-debian13.tar.gz",
+  "bundle_sha256": "4c61f77b4b32c618b954d43bede5c2d231c521a56f59c237528bad41ba82cb7a",
+  "installer": "releases/3.8.4/proxmox-install-lxc.sh",
+  "installer_sha256": "576491855e5c786515b034a619db630abe6d2f1c9b37d83bbdbf41dde0d36a13",
   "community_script": "ct/dpl-acron.sh",
-  "community_script_sha256": "7ecb3c7c8b011c28543d35b68b724296f199b1f37308e88c0f8d9de9281f92f8",
+  "community_script_sha256": "d3d30741be7090985530574730bc42e2e3d7ba8929b1663ef73d24f9e8400adf",
   "proxmox_entry": "install-proxmox.sh",
-  "proxmox_entry_sha256": "9cad464bf99f84c3ee37ac81fa7cac804a4a5c4ae7d0bbf1817ccf31caf969d9",
+  "proxmox_entry_sha256": "ab27efaa41a1804f7e91a01ee309c233588959c339ed0b27f73ec95d4b4083df",
   "proxmox_bootstrap": "bootstrap-proxmox.sh",
-  "proxmox_bootstrap_sha256": "1f3dd9fbd43a8c59342d87c947c64ed3ef1b6d5096f9b606684b9ede92daaa6c",
+  "proxmox_bootstrap_sha256": "41d3622237cf5f8d62cb8bb4f3fd7b06058d5e0695f0149bdb32c6321351cf89",
   "community_install": "install/dpl-acron-install.sh",
   "community_install_sha256": "bcfc1b5e50766b2fc588db3b5847da2036ebd6945fa2825627ff85c9a50863a8",
   "acceptance_test": "test/proxmox-acceptance.sh",
-  "acceptance_test_sha256": "85d982906d5b75b5b46a8ad20d36bcf9ce0880a88043ef278194ed75a88ed053"
+  "acceptance_test_sha256": "27ec20140081c2498eec641075bbf86fcd1ef500222193d05fffb78fd889127e"
 }
