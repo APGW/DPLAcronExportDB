@@ -115,7 +115,19 @@ if [[ "$packages_missing" -eq 1 ]]; then
       echo "Das Offline-Paketverzeichnis enthält keine Debian-Pakete." >&2
       exit 1
     }
-    dpkg --unpack "${offline_debs[@]}"
+    offline_packages_ready=0
+    for offline_attempt in 1 2 3; do
+      if dpkg --unpack "${offline_debs[@]}"; then
+        offline_packages_ready=1
+        break
+      fi
+      echo "Offline-Pakete: Zwischenkonfiguration nach Durchlauf $offline_attempt ..."
+      dpkg --configure -a || true
+    done
+    [[ "$offline_packages_ready" -eq 1 ]] || {
+      echo "Die Offline-Pakete konnten nach drei Durchläufen nicht vollständig entpackt werden." >&2
+      exit 1
+    }
     dpkg --configure -a
     dpkg --audit
   else
