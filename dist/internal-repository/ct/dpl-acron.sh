@@ -9,8 +9,8 @@ set -Eeuo pipefail
 # Ein versehentlich geerbtes Kennwort darf keinem Prüf-, Download- oder
 # Installationsprozess des Wrappers zugänglich sein.
 APP="dpl-acron"
-DPL_APP_VERSION="3.7.9"
-DPL_BUNDLE_SHA256="2a0a9067dd390a07cec8021bf604762aca67f715d4ec4e74055571996d1fb656"
+DPL_APP_VERSION="3.8.0"
+DPL_BUNDLE_SHA256="2d957cee6f438baca6f7282c474895e91176e6dd0ab19c8ddcf0d0f764de54d7"
 DPL_BASE_URL="${DPL_BASE_URL:-}"
 DPL_ALLOW_HTTP="${DPL_ALLOW_HTTP:-0}"
 DPL_CA_CERT="${DPL_CA_CERT:-}"

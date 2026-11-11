@@ -11,6 +11,7 @@ server {
 
     client_max_body_size 25m;
     add_header Strict-Transport-Security "max-age=31536000" always;
+    include /etc/nginx/snippets/dpl-acron-access.conf;
     location = /api/health {
         proxy_pass http://127.0.0.1:8765;
         proxy_set_header Host $host;

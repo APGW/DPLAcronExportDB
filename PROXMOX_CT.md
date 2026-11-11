@@ -10,7 +10,7 @@ nicht ins Netzwerk freigegeben.
 - 2 GB RAM und 512 MB Swap
 - mindestens 8 GB Root-Disk
 - Autostart aktiviert
-- Proxmox-Firewall an der CT-Netzwerkkarte aktiviert
+- Nginx-CIDR-Schutz unabhängig von Datacenter-Firewalleinstellungen
 - kein Docker, `nesting` oder privilegierter Container erforderlich
 
 Das primäre Verfahren verwendet einen internen, Community-Scripts-kompatiblen
@@ -176,8 +176,9 @@ liegt.
 
 `WEB_CIDRS` ist verpflichtend. Die Beispielnetze müssen durch die tatsächlichen
 LAN- und VPN-Netze ersetzt werden. Mehrere Netze werden mit Komma getrennt.
-`SSH_CIDRS` und `SSH_PUBLIC_KEYS` sind optional; ohne SSH-Freigabe erfolgt die
-Administration über `pct enter 3072` auf dem Proxmox-Host.
+SSH wird im Container deaktiviert. Die Administration erfolgt über
+`pct enter 3072` auf dem Proxmox-Host. Datacenter- und Node-Firewalleinstellungen
+werden vom Installer weder gelesen noch verändert.
 
 Standardmäßig verwendet das Skript DHCP, `local-lvm`, `local` und `vmbr0`. Eine
 statische IP und abweichende Speicher lassen sich so setzen:
@@ -186,7 +187,7 @@ statische IP und abweichende Speicher lassen sich so setzen:
 /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
   CTID=3072 CT_HOSTNAME=dpl-acron ROOT_STORAGE=local-lvm TEMPLATE_STORAGE=local \
   BRIDGE=vmbr0 IP_CONFIG=192.168.133.130/24 GATEWAY=192.168.133.2 \
-  WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" SSH_CIDRS="192.168.133.0/24" \
+  WEB_CIDRS="192.168.133.0/24,10.250.0.0/24" \
   /bin/bash --noprofile --norc -p /root/proxmox-install-lxc.sh
 ```
 
@@ -290,14 +291,10 @@ Standardrichtlinie `DROP` an. Es erlaubt:
 - `443/tcp` ausschließlich aus `WEB_CIDRS`
 - optional `22/tcp` ausschließlich aus `SSH_CIDRS`
 
-Der Installer prüft vor dem ersten Containerstart, dass die Firewall unter
-`Datacenter > Firewall > Options` aktiviert ist und auf dem aktuellen Node
-der zur Node-Option `nftables` passende Dienst aktiv ist:
-`proxmox-firewall.service` bei aktivem nftables-Backend, andernfalls
-`pve-firewall.service`. Er
-ändert diese gemeinsam genutzten Hosteinstellungen nicht automatisch. Eine
-separate Node-Host-Firewalloption ist nur für Regeln des Proxmox-Hosts selbst
-zuständig und keine Voraussetzung für die CT-Regeln. Es darf weder am
+Der verbindliche Zugriffsschutz wird innerhalb des Containers durch eine von
+`WEB_CIDRS` erzeugte Nginx-Allowlist mit abschließendem `deny all` umgesetzt.
+Die zusätzlich erzeugte CT-Firewalldatei ist nur Defense-in-Depth und setzt
+keine Änderung an Datacenter- oder Node-Einstellungen voraus. Es darf weder am
 Internet-Router noch an
 einer vorgeschalteten Firewall eine öffentliche Weiterleitung für `443`
 oder `3306` auf diesen Container geben. VPN-Clients greifen per Routing auf die
@@ -305,8 +302,8 @@ private CT-IP zu.
 
 Der Container wird zunächst mit deaktiviertem Autostart erstellt. Erst nach
 erfolgreicher Installation und bestandener lokaler Gesundheitsprüfung setzt der
-Installer `onboot=1`. Bei einer fehlgeschlagenen Firewallprüfung bleibt der
-Container gestoppt und startet auch nach einem Hostneustart nicht automatisch.
+Installer `onboot=1`. Bei einem Installationsfehler bleibt der Container ohne
+Autostart und startet nach einem Hostneustart nicht automatisch.
 
 ## Wiederverwendbare CT-Vorlage
 

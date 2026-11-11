@@ -39,14 +39,11 @@ builtin export PATH=/usr/sbin:/usr/bin:/sbin:/bin
 readonly BASH_BIN=/bin/bash
 readonly CURL_BIN=/usr/bin/curl
 readonly ENV_BIN=/usr/bin/env
-readonly HOSTNAME_BIN=/usr/bin/hostname
 readonly IP_BIN=/usr/sbin/ip
 readonly MKTEMP_BIN=/usr/bin/mktemp
-readonly PYESH_BIN=/usr/bin/pvesh
 readonly PYTHON_BIN=/usr/bin/python3
 readonly SHA256SUM_BIN=/usr/bin/sha256sum
 readonly STAT_BIN=/usr/bin/stat
-readonly SYSTEMCTL_BIN=/usr/bin/systemctl
 
 # Vollständige Installation eines neuen Debian-13-LXC auf einem Proxmox-VE-Host.
 # Pflichtangaben:
@@ -101,38 +98,6 @@ cleanup() {
 }
 trap cleanup EXIT
 
-require_effective_proxmox_firewall() {
-  local cluster_options node_options node_name required_backend
-  cluster_options="$($PYESH_BIN get /cluster/firewall/options --output-format json 2>/dev/null)" \
-    || fail "Der Datacenter-Firewallstatus konnte nicht gelesen werden."
-  "$PYTHON_BIN" -I - "$cluster_options" <<'PY' \
-    || fail "Die Proxmox-Firewall ist im Datacenter nicht aktiviert. Aktivieren Sie Datacenter > Firewall > Options > Firewall."
-import json
-import sys
-
-value = json.loads(sys.argv[1]).get("enable")
-if value not in (1, True, "1", "true", "on", "yes"):
-    raise SystemExit(1)
-PY
-  node_name="$($HOSTNAME_BIN -s)"
-  [[ "$node_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] \
-    || fail "Der lokale Proxmox-Node konnte nicht sicher bestimmt werden."
-  node_options="$($PYESH_BIN get "/nodes/$node_name/firewall/options" --output-format json 2>/dev/null)" \
-    || fail "Die Firewalloptionen des Proxmox-Nodes $node_name konnten nicht gelesen werden."
-  required_backend="$("$PYTHON_BIN" -I - "$node_options" <<'PY'
-import json
-import sys
-
-value = json.loads(sys.argv[1]).get("nftables", 0)
-enabled = value in (1, True, "1", "true", "on", "yes")
-print("proxmox-firewall.service" if enabled else "pve-firewall.service")
-PY
-)" || fail "Die Firewalloption nftables des Proxmox-Nodes ist ungültig."
-  "$SYSTEMCTL_BIN" is-active --quiet "$required_backend" 2>/dev/null \
-    || fail "Das für den Node konfigurierte Proxmox-Firewall-Backend ist nicht aktiv: $required_backend"
-  echo "Proxmox-Firewall wirksam: Datacenter aktiviert, Backend $required_backend aktiv."
-}
-
 if [[ -z "$bundle_path" && -z "$bundle_url" && -f "$script_dir/dpl-acron-debian13.tar.gz" ]]; then
   bundle_path="$script_dir/dpl-acron-debian13.tar.gz"
 fi
@@ -151,7 +116,8 @@ fi
   || fail "DPL_ALLOW_PUBLIC_CIDRS muss 0 oder 1 sein."
 [[ "$resume_existing" == "0" || "$resume_existing" == "1" ]] \
   || fail "RESUME_EXISTING muss 0 oder 1 sein."
-require_effective_proxmox_firewall
+[[ -z "$ssh_cidrs" && -z "$ssh_public_keys" ]] \
+  || fail "SSH-Freigaben erfordern eine separat verwaltete Host-Firewall und werden von diesem Installer nicht eingerichtet."
 if [[ -z "$admin_password" ]]; then
   read -r -s -p "Initiales oder neues DPL2ACRON-Administratorkennwort: " admin_password </dev/tty
   echo
@@ -334,14 +300,11 @@ firewall_temp="$work_dir/ct-firewall.fw"
 cp -- "$firewall_temp" "/etc/pve/firewall/$ctid.fw"
 pct set "$ctid" --onboot 0
 
-# Die CT-Regeln wirken nur bei global aktivierter Proxmox-Firewall und einem
-# laufenden Backend. Gemeinsame Hosteinstellungen werden nie automatisch
-# verändert; bei fehlender Schutzwirkung bleibt der CT gestoppt.
-require_effective_proxmox_firewall
-
-# Erst nach dem Schreiben der Allow-Regeln starten, damit es kein kurzes
-# ungeschütztes Zeitfenster mit eingehender Standardrichtlinie ACCEPT gibt.
+# Die Proxmox-CT-Regeln bleiben als optionale zusätzliche Schutzschicht bestehen.
+# Datacenter- und Node-Firewalloptionen werden weder gelesen noch verändert.
+# Der verpflichtende Zugriffsschutz wird innerhalb des CT durch Nginx umgesetzt.
 pct start "$ctid"
+pct exec "$ctid" -- systemctl disable --now ssh.service ssh.socket >/dev/null 2>&1 || true
 
 echo "Warte auf Netzwerk und Paketquellen ..."
 network_ready=0
@@ -376,6 +339,7 @@ pct exec "$ctid" -- /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bi
   "DPL_ADMIN_USERNAME=$admin_username" \
   "DPL_SECURE_COOKIE=1" \
   "DPL_TRUST_PROXY=1" \
+  "DPL_WEB_CIDRS=$web_cidrs" \
   "DPL_UPDATE_BASE_URL=$update_base_url" \
   "DPL_UPDATE_ALLOW_HTTP=$update_allow_http" \
   "DPL_UPDATE_CA_CERT_SOURCE=$container_ca_file" \

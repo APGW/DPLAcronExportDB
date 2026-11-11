@@ -3,10 +3,10 @@ set -Eeuo pipefail
 
 # Nicht-destruktive Abnahme einer installierten DPL2ACRON-Testinstanz.
 # Ausführung auf dem Proxmox-VE-Host:
-#   CTID=100 EXPECTED_VERSION=3.7.9 EXPECTED_VLAN_TAG=100 /bin/bash --noprofile --norc -p proxmox-acceptance.sh
+#   CTID=100 EXPECTED_VERSION=3.8.0 EXPECTED_VLAN_TAG=100 /bin/bash --noprofile --norc -p proxmox-acceptance.sh
 
 ctid="${CTID:-}"
-expected_version="${EXPECTED_VERSION:-3.7.9}"
+expected_version="${EXPECTED_VERSION:-3.8.0}"
 expected_vlan_tag="${EXPECTED_VLAN_TAG:-}"
 checks=0
 temporary_dir=""
@@ -32,42 +32,10 @@ cleanup() {
 }
 trap cleanup EXIT
 
-require_effective_proxmox_firewall() {
-  local cluster_options node_options node_name required_backend
-  cluster_options="$(pvesh get /cluster/firewall/options --output-format json 2>/dev/null)" \
-    || fail "Der Datacenter-Firewallstatus konnte nicht gelesen werden."
-  python3 -I - "$cluster_options" <<'PY' \
-    || fail "Die Proxmox-Firewall ist im Datacenter nicht aktiviert."
-import json
-import sys
-
-value = json.loads(sys.argv[1]).get("enable")
-if value not in (1, True, "1", "true", "on", "yes"):
-    raise SystemExit(1)
-PY
-  node_name="$(hostname -s)"
-  [[ "$node_name" =~ ^[a-zA-Z0-9][a-zA-Z0-9.-]*$ ]] \
-    || fail "Der lokale Proxmox-Node konnte nicht sicher bestimmt werden."
-  node_options="$(pvesh get "/nodes/$node_name/firewall/options" --output-format json 2>/dev/null)" \
-    || fail "Die Firewalloptionen des Proxmox-Nodes $node_name konnten nicht gelesen werden."
-  required_backend="$(python3 -I - "$node_options" <<'PY'
-import json
-import sys
-
-value = json.loads(sys.argv[1]).get("nftables", 0)
-enabled = value in (1, True, "1", "true", "on", "yes")
-print("proxmox-firewall.service" if enabled else "pve-firewall.service")
-PY
-)" || fail "Die Firewalloption nftables des Proxmox-Nodes ist ungültig."
-  systemctl is-active --quiet "$required_backend" 2>/dev/null \
-    || fail "Das konfigurierte Proxmox-Firewall-Backend ist nicht aktiv: $required_backend"
-}
-
 [[ "${EUID:-$(id -u)}" -eq 0 ]] || fail "Als root auf dem Proxmox-Host ausführen."
 command -v pct >/dev/null 2>&1 || fail "pct wurde nicht gefunden."
 command -v python3 >/dev/null 2>&1 || fail "python3 wurde nicht gefunden."
 command -v curl >/dev/null 2>&1 || fail "curl wurde nicht gefunden."
-command -v pvesh >/dev/null 2>&1 || fail "pvesh wurde nicht gefunden."
 [[ "$ctid" =~ ^[1-9][0-9]{2,8}$ ]] || fail "CTID muss eine gültige Proxmox-ID sein."
 [[ "$expected_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]] || fail "EXPECTED_VERSION ist ungültig."
 if [[ -n "$expected_vlan_tag" ]]; then
@@ -82,8 +50,7 @@ if [[ -n "$expected_vlan_tag" ]]; then
   grep -Eq "^net0: .*tag=$expected_vlan_tag([,[:space:]]|$)" <<< "$config" \
     || fail "Die CT-Netzwerkschnittstelle verwendet nicht VLAN $expected_vlan_tag."
 fi
-require_effective_proxmox_firewall
-pass "Unprivilegierter CT und wirksame Proxmox-Firewall"
+pass "Unprivilegierter CT; Proxmox-CT-Regeln als zusätzliche Schutzschicht vorhanden"
 
 [[ "$(pct status "$ctid" | awk '{print $2}')" == "running" ]] || fail "CT $ctid läuft nicht."
 os_version="$(pct exec "$ctid" -- sh -c '. /etc/os-release; printf %s "$VERSION_ID"')"
@@ -111,7 +78,23 @@ grep -Eq '(:|\])443([[:space:]]|$)' <<< "$listeners" || fail "Nginx lauscht nich
 if grep -Eq '(^|[[:space:]])(0\.0\.0\.0|\*|\[::\]|:::):3306([[:space:]]|$)' <<< "$listeners"; then
   fail "MariaDB lauscht extern auf Port 3306."
 fi
+if grep -Eq '(^|[[:space:]])(0\.0\.0\.0|\*|\[::\]|:::):22([[:space:]]|$)' <<< "$listeners"; then
+  fail "SSH lauscht extern, obwohl die Datacenter-Firewall nicht vorausgesetzt wird."
+fi
 pass "Nur HTTPS extern; Backend und MariaDB nicht extern gebunden"
+
+pct exec "$ctid" -- grep -Fqx '    include /etc/nginx/snippets/dpl-acron-access.conf;' \
+  /etc/nginx/sites-available/dpl-acron.conf \
+  || fail "Nginx bindet die verpflichtende CIDR-Zugriffsliste nicht ein."
+pct exec "$ctid" -- grep -Fqx 'deny all;' /etc/nginx/snippets/dpl-acron-access.conf \
+  || fail "Nginx verweigert Zugriffe außerhalb der Freigabeliste nicht."
+web_cidrs="$(pct exec "$ctid" -- cat /etc/dpl-acron/web-cidrs)"
+IFS=',' read -r -a web_cidr_list <<< "$web_cidrs"
+for cidr in "${web_cidr_list[@]}"; do
+  pct exec "$ctid" -- grep -Fqx "allow $cidr;" /etc/nginx/snippets/dpl-acron-access.conf \
+    || fail "Nginx-Freigabe fehlt für $cidr."
+done
+pass "Nginx beschränkt HTTPS auf die konfigurierten Intranet-/VPN-Netze"
 
 firewall_file="/etc/pve/firewall/$ctid.fw"
 [[ -r "$firewall_file" ]] || fail "Proxmox-Firewalldatei fehlt: $firewall_file"

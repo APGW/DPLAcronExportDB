@@ -46,6 +46,7 @@ Auf Debian installieren:
   /usr/bin/tar -xzf /tmp/dpl-acron-debian13.tar.gz -C "$INSTALL_DIR"
   cd "$INSTALL_DIR"
   sudo /usr/bin/env -i HOME=/root PATH=/usr/sbin:/usr/bin:/sbin:/bin TERM="${TERM:-xterm}" \
+    DPL_WEB_CIDRS="10.20.0.0/16,10.250.0.0/24" \
     /bin/bash --noprofile --norc -p deploy/install-debian13.sh
 )
 ```
@@ -79,7 +80,8 @@ Nach der Installation ist eine Anmeldung erforderlich. Der Installer:
 
 Die mitgelieferte Konfiguration bindet das Python-Backend nur an
 `127.0.0.1:8765`. Nginx stellt die private CT-/VM-Adresse ausschließlich per
-HTTPS bereit. Vor der Nutzung muss die Firewall stehen:
+HTTPS bereit und verwirft Zugriffe außerhalb von `DPL_WEB_CIDRS`. Eine
+vorgeschaltete Firewall kann ergänzend verwendet werden:
 
 - `443/tcp` eingehend aus den benötigten LAN- und VPN-Subnetzen erlauben
 - alle anderen eingehenden Zugriffe auf `443/tcp` verwerfen

@@ -5,10 +5,11 @@ admin_password_input="${DPL_ADMIN_PASSWORD:-}"
 update_base_url="${DPL_UPDATE_BASE_URL:-}"
 update_allow_http="${DPL_UPDATE_ALLOW_HTTP:-0}"
 update_ca_cert_source="${DPL_UPDATE_CA_CERT_SOURCE:-}"
+web_cidrs_input="${DPL_WEB_CIDRS:-}"
 for function_name in $(builtin compgen -A function); do
   builtin unset -f "$function_name"
 done
-builtin unset DPL_ADMIN_PASSWORD BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
+builtin unset DPL_ADMIN_PASSWORD DPL_WEB_CIDRS BASH_ENV ENV CDPATH GLOBIGNORE PYTHONPATH PYTHONHOME PYTHONSTARTUP \
   LD_PRELOAD LD_LIBRARY_PATH CURL_HOME CURL_CA_BUNDLE SSL_CERT_FILE SSL_CERT_DIR TMPDIR
 builtin export -n IFS
 IFS=$' \t\n'
@@ -30,6 +31,7 @@ client_config="$config_dir/mariadb-client.cnf"
 backup_dir="/var/backups/dpl-acron"
 backup_status_dir="/var/lib/dpl-acron-backup"
 tls_dir="$config_dir/tls"
+web_cidrs_file="$config_dir/web-cidrs"
 service_user="dpl-acron"
 service_group="dpl-acron"
 service_was_active=0
@@ -106,6 +108,35 @@ fi
 
 "$PYTHON_BIN" -I -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else "Python 3.11 oder neuer ist erforderlich.")'
 "$PYTHON_BIN" -I -c 'import mariadb; print("MariaDB Connector/Python:", mariadb.__version__)'
+
+if [[ -z "$web_cidrs_input" && -r "$web_cidrs_file" ]]; then
+  web_cidrs_input="$(tr -d '\r\n' < "$web_cidrs_file")"
+fi
+[[ -n "$web_cidrs_input" ]] || {
+  echo "DPL_WEB_CIDRS muss die erlaubten Intranet-/VPN-Netze enthalten." >&2
+  exit 1
+}
+web_cidrs="$($PYTHON_BIN -I - "$web_cidrs_input" <<'PY'
+import ipaddress
+import sys
+
+raw = sys.argv[1].split(",")
+if not raw or any(not item.strip() for item in raw):
+    raise SystemExit(1)
+normalized = []
+for item in raw:
+    network = ipaddress.ip_network(item.strip(), strict=True)
+    if network.is_loopback or network.is_link_local or network.is_multicast or network.is_unspecified or network.is_reserved:
+        raise SystemExit(1)
+    value = str(network)
+    if value not in normalized:
+        normalized.append(value)
+print(",".join(normalized))
+PY
+)" || {
+  echo "DPL_WEB_CIDRS enthält ein ungültiges oder spezielles Netz." >&2
+  exit 1
+}
 
 systemctl enable --now mariadb.service
 systemctl is-active --quiet mariadb.service || {
@@ -184,6 +215,8 @@ fi
 install -d -o root -g root -m 0755 "$install_dir"
 install -d -o "$service_user" -g "$service_group" -m 0750 "$state_dir" "$state_dir/data"
 install -d -o root -g "$service_group" -m 0750 "$config_dir"
+install -o root -g "$service_group" -m 0640 /dev/null "$web_cidrs_file"
+printf '%s\n' "$web_cidrs" > "$web_cidrs_file"
 [[ ! -L "$backup_status_dir" ]] || { echo "Unsicheres Statusverzeichnis: $backup_status_dir" >&2; exit 1; }
 install -d -o root -g "$service_group" -m 0750 "$backup_status_dir"
 install -d -o root -g root -m 0700 "$backup_dir"
@@ -312,6 +345,15 @@ fi
 chmod 0600 "$tls_dir/ca.key" "$tls_dir/server.key"
 chmod 0644 "$tls_dir/ca.crt" "$tls_dir/server.crt"
 
+install -d -o root -g root -m 0755 /etc/nginx/snippets
+nginx_access_file=/etc/nginx/snippets/dpl-acron-access.conf
+install -o root -g root -m 0644 /dev/null "$nginx_access_file"
+IFS=',' read -r -a web_cidr_list <<< "$web_cidrs"
+for cidr in "${web_cidr_list[@]}"; do
+  printf 'allow %s;\n' "$cidr" >> "$nginx_access_file"
+done
+printf '%s\n' 'deny all;' >> "$nginx_access_file"
+
 cat > /etc/nginx/sites-available/dpl-acron.conf <<'NGINX'
 server {
     listen 443 ssl;
@@ -323,6 +365,7 @@ server {
     ssl_session_tickets off;
     client_max_body_size 25m;
     add_header Strict-Transport-Security "max-age=31536000" always;
+    include /etc/nginx/snippets/dpl-acron-access.conf;
     location / {
         proxy_pass http://127.0.0.1:8765;
         proxy_http_version 1.1;
